@@ -1,0 +1,55 @@
+---
+description: Rules for the Expo / React Native mobile app
+globs: apps/mobile/**
+alwaysApply: false
+---
+
+# Mobile app rules
+
+The app is a thin client over the engine + Supabase. Routing is Expo Router. State is Zustand. Animations are Reanimated 3.
+
+## Hard rules
+
+- **No game logic in components.** If a component contains conditions about cards, turns, or scoring, that logic belongs in the engine or a selector.
+- **Components read state via Zustand selectors**, never the full store. Bad: `useStore()`. Good: `useStore((s) => s.myHand)`.
+- **All user-visible strings go through `t()`.** Even though we're English-only in v1.
+- **No hardcoded colors, spacings, or radii.** Use design tokens from `apps/mobile/src/design/tokens.ts`.
+- **Optimistic UI** for moves: dispatch locally via engine, then reconcile on server confirm. If the server rejects, animate back.
+- **Reanimated worklets** for anything that runs every frame (card drag, flip). Don't compute derived animation values on the JS thread.
+
+## Folder layout
+
+```
+apps/mobile/
+├── app/                      # Expo Router routes
+│   ├── (auth)/               # sign-in flow
+│   ├── (lobby)/              # rooms list, create/join
+│   └── (game)/[roomId]/      # active game screen
+├── src/
+│   ├── components/           # presentational only
+│   ├── design/               # tokens, theme, primitives
+│   ├── i18n/                 # locales + t() wrapper
+│   ├── store/                # Zustand stores + selectors
+│   ├── supabase/             # client wrapper, realtime hooks
+│   └── engine/               # re-exports from @pablo/engine for convenience
+└── assets/
+```
+
+## Example: a card component
+
+```tsx
+// ❌ BAD — game logic in a component
+export function CardSlot({ slotIndex }: { slotIndex: number }) {
+  const state = useStore((s) => s.state);
+  const isMyTurn = state.players[state.turnIndex] === state.self;
+  const canSwap = state.drawn && isMyTurn;
+  // ...
+}
+
+// ✅ GOOD — read derived flags from selectors
+export function CardSlot({ slotIndex }: { slotIndex: number }) {
+  const canSwap = useStore(selectCanSwapInto(slotIndex));
+  const card = useStore(selectMyCard(slotIndex));
+  return <Card card={card} interactive={canSwap} />;
+}
+```

@@ -1,0 +1,40 @@
+---
+description: Visual design conventions and theming
+globs: apps/mobile/**
+alwaysApply: false
+---
+
+# Design rules
+
+v1 keeps the visual identity minimal and themable. We evolve toward a zellige-inspired (geometric Tunisian tile) aesthetic in Phase 6 — so the code must be ready for that without a rewrite.
+
+## Hard rules
+
+- **No hardcoded colors, spacings, radii, or font sizes in components.** Always read from `apps/mobile/src/design/tokens.ts`.
+- **Tokens are semantic, not raw.** Use `colors.surface.card`, not `colors.cream`. Use `space.md`, not `8`.
+- **One theme file controls everything.** Switching to a darker / more ornate zellige theme should be a one-file change.
+- **SVG/Skia for any decorative pattern.** Never ship pattern PNGs; we want to recolor them via theme.
+
+## v1 aesthetic
+
+- Clean and uncluttered. Lots of breathing room.
+- Card backs: solid color with a subtle geometric motif placeholder (replace with zellige pattern in Phase 6).
+- Typography: a single sans-serif family with two weights (regular + semibold).
+- Color palette: neutral base + one accent. Avoid committing to a specific cultural palette until Phase 6.
+
+## Example: tokens
+
+```ts
+// apps/mobile/src/design/tokens.ts
+export const tokens = {
+  color: {
+    surface: { app: '#FAFAF7', card: '#FFFFFF', overlay: 'rgba(0,0,0,0.4)' },
+    text:    { primary: '#1A1A1A', secondary: '#666666', inverse: '#FFFFFF' },
+    accent:  { primary: '#2D6A4F', primaryPressed: '#1B4332' },
+    border:  { subtle: '#E5E5E0' },
+  },
+  space:  { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 },
+  radius: { sm: 6, md: 10, lg: 16, pill: 999 },
+  font:   { size: { xs: 12, sm: 14, md: 16, lg: 20, xl: 28 }, weight: { regular: '400', semibold: '600' } },
+} as const;
+```

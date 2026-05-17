@@ -1,0 +1,33 @@
+---
+description: Internationalization conventions
+globs: apps/mobile/**
+alwaysApply: false
+---
+
+# i18n rules
+
+v1 ships English only, but every user-visible string goes through `t()` so we can drop in French and Arabic later without a refactor.
+
+## Hard rules
+
+- **No string literals in JSX or alerts.** Use `t('namespace.key')`.
+- **All keys live in `apps/mobile/src/i18n/locales/<lang>.json`.** Currently only `en.json`.
+- **New strings: add the key to every locale file** (English now, but the structure is in place).
+- **Keep keys hierarchical**: `lobby.create.title`, `game.action.callPablo`, `error.network.offline`.
+- **No string concatenation** for translated content. Use ICU MessageFormat / interpolation: `t('game.scoreLine', { name, score })`.
+
+## When RTL eventually matters
+
+When we add Arabic, layouts must respect RTL. Use logical properties already (`paddingStart`, `marginEnd`) instead of `paddingLeft`/`marginRight`. Cheap to do now, expensive to retrofit.
+
+## Example
+
+```tsx
+// ❌ BAD
+<Button title="Call Pablo" />
+<Text>{`Score: ${score}`}</Text>
+
+// ✅ GOOD
+<Button title={t('game.action.callPablo')} />
+<Text>{t('game.scoreLine', { score })}</Text>
+```

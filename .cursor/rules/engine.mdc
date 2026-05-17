@@ -1,0 +1,52 @@
+---
+description: Rules for the pure-TypeScript Pablo game engine
+globs: packages/engine/**
+alwaysApply: false
+---
+
+# Engine package rules
+
+The engine is pure and framework-free. It runs unmodified in the browser, React Native, and Deno (Supabase Edge Functions). Treat it as a library.
+
+## Hard rules
+
+- **No imports from**: `expo`, `react`, `react-native`, `@supabase/*`, `node:*`, `fs`, `path`, `crypto` (use injected RNG), or anything not listed in `packages/engine/package.json`.
+- **No `Date.now()`, no `Math.random()`.** Randomness comes from the seed via the engine's PRNG. Time, if needed, is injected.
+- **All exported functions are pure** — same input, same output, no side effects, no mutation of arguments.
+- **State is immutable.** When `applyMove` returns a new state, it does so by constructing a new object — no in-place mutation. Use spread/structuredClone style.
+- **Every public function has tests.** See `packages/engine/src/**/*.test.ts`. New behavior = new test.
+- **The canonical rules are `docs/GAME_LOGIC.md`.** If the engine and the doc disagree, fix the engine. If the rules genuinely need to change, update the doc first.
+
+## Style
+
+- Prefer discriminated unions over enums for `Move`, `GameEvent`, `GameStatus`.
+- Prefer `ReadonlyArray<T>` and `Readonly<T>` on all state shapes — TS will catch mutation attempts.
+- Return `{ ok: true, ... } | { ok: false, error }` instead of throwing for expected failures (illegal moves, etc.). Throw only for "this should be impossible" bugs.
+- Keep public API surface small: types + `newGame`, `applyMove`, `computePlayerView`, `scoreRound`, `legalMoves`. Everything else is internal.
+
+## Testing
+
+- Use `bun test`. Test files live next to source as `*.test.ts`.
+- Test every rule branch in `docs/GAME_LOGIC.md` — including edge cases (deck exhaustion, Pablo with one card left, ties).
+- Use a fixed seed in tests for deterministic outcomes.
+
+## Example: how an illegal move should be handled
+
+```ts
+// ❌ BAD
+export function applyMove(state: GameState, move: Move): GameState {
+  if (move.playerId !== state.players[state.turnIndex]) {
+    throw new Error("Not your turn");
+  }
+  // ...
+}
+
+// ✅ GOOD
+export function applyMove(state: GameState, move: Move): MoveResult {
+  if (move.playerId !== state.players[state.turnIndex]) {
+    return { ok: false, error: "not_your_turn" };
+  }
+  // ...
+  return { ok: true, state: nextState, events };
+}
+```

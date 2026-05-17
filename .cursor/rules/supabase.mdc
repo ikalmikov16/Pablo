@@ -1,0 +1,63 @@
+---
+description: Rules for the Supabase layer (schema, migrations, edge functions)
+globs: supabase/**
+alwaysApply: false
+---
+
+# Supabase rules
+
+Canonical schema is `docs/SCHEMA.md`. Update it whenever you change tables, RLS, or edge function contracts.
+
+## Hard rules
+
+- **RLS is enabled in the same migration that creates the table.** Never split them.
+- **`games` is service-role only.** Clients cannot read or write it directly. Period.
+- **Per-player views come from a `SECURITY DEFINER` Postgres function or an edge function.** Never expose raw `games.state` to the client.
+- **All rule logic lives in `packages/engine`.** Edge functions call into the engine; they do not re-implement validation, scoring, or state transitions.
+- **Every mutation requires an `idempotencyKey` and an `expectedVersion`.** Retries must be safe; stale moves must be rejected.
+- **Service role key never appears in the client.** It only exists in edge function environment variables.
+
+## Migrations
+
+- Filename: `YYYYMMDDHHMMSS_short_description.sql` (use `supabase migration new`).
+- Add RLS policies in the same file as the `CREATE TABLE`.
+- Include a rollback as comments at the bottom — we don't run it automatically but it's useful in review.
+- Never edit a migration after it's been applied to a shared environment. Add a new one instead.
+
+## Edge functions
+
+- One folder per function in `supabase/functions/<name>/`.
+- Each function has `index.ts` (entry) and an optional `*.test.ts`.
+- Use `supabase.auth.getUser()` for auth, not headers directly.
+- Import the engine via the workspace alias; Deno's import map resolves it.
+- Always return `{ ok: true, ... } | { ok: false, error: string, code?: string }`.
+
+## Example: validating + applying a move
+
+```ts
+// supabase/functions/applyMove/index.ts (sketch)
+import { applyMove } from "../../../packages/engine/src/index.ts";
+
+export default async (req: Request) => {
+  const user = await getUser(req);
+  const { gameId, move, idempotencyKey, expectedVersion } = await req.json();
+
+  if (await alreadyApplied(idempotencyKey)) return ok({ version: expectedVersion });
+
+  const game = await loadGame(gameId);
+  if (game.version !== expectedVersion) return err("stale_version");
+  if (move.playerId !== user.id) return err("not_your_move");
+
+  const result = applyMove(game.state, move);
+  if (!result.ok) return err(result.error);
+
+  await persistAtomically({ gameId, newState: result.state, events: result.events, idempotencyKey });
+  return ok({ version: game.version + 1 });
+};
+```
+
+## Don'ts
+
+- ❌ Don't create an ORM or query builder layer. Use `supabase-js` and raw SQL where needed.
+- ❌ Don't put business logic in Postgres functions (other than the per-player projection). Logic belongs in the engine.
+- ❌ Don't `select *` into the client — explicitly list columns, especially for `games`-adjacent tables.
