@@ -54,9 +54,25 @@ Every meaningful change must:
 4. Update `docs/GAME_LOGIC.md` if you changed any rule semantics
 5. Update `docs/SCHEMA.md` if you changed any Supabase table, RLS policy, or edge function contract
 
+## Branch / PR workflow
+
+This repo runs multiple background agents in parallel. To avoid stepping on each other:
+
+1. **Every phase gets its own branch.** Naming: `phase-N-short-slug` (e.g. `phase-2-engine`, `phase-5-supabase`). See `docs/PLAN.md` for the canonical branch name per phase.
+2. **Never commit directly to `main`.** Background agents push to their phase branch and **open a PR** when done.
+3. **Bugbot auto-reviews PRs.** A human merges after a quick pass.
+4. **Squash-merge** to keep `main` linear and readable.
+5. **Last step before opening a PR**: update `docs/PLAN.md` — move items between Done / In Progress / Up Next, append to "Decisions Made". A PR without a PLAN.md update gets sent back.
+
+When the user spawns a background agent, the prompt should explicitly include:
+
+> Work on branch `<branch-name>`. When all "Definition of Done" criteria from the matching phase in `docs/PLAN.md` are met, push and open a PR titled `<title>`. Do NOT merge.
+
 ## Phase tracker
 
-See `docs/PLAN.md`. We are currently in **Phase 1 — Scaffold**.
+See `docs/PLAN.md`. Each phase has a goal, must-include list, out-of-scope list, definition of done, branch name, token budget, and model recommendation.
+
+We are currently between **Phase 1 (Scaffold, done)** and **Phase 2 (Engine, next)**.
 
 ## When you're unsure
 

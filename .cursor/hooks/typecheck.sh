@@ -49,10 +49,12 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 
 # Run tsc in noEmit mode for that package. Cap output to keep context small.
-output=$(cd "$target" && bunx tsc --noEmit 2>&1 | head -n 80)
-status=$?
+# IMPORTANT: capture tsc's exit status, not head's (PIPESTATUS bash-ism).
+raw=$(cd "$target" && bunx tsc --noEmit 2>&1; echo "__TSC_EXIT__$?")
+status=$(printf '%s' "$raw" | sed -n 's/.*__TSC_EXIT__\([0-9]*\).*/\1/p' | tail -n1)
+output=$(printf '%s' "$raw" | sed 's/__TSC_EXIT__[0-9]*$//' | head -n 80)
 
-if [[ $status -eq 0 ]]; then
+if [[ "$status" == "0" ]]; then
   echo '{}'
   exit 0
 fi

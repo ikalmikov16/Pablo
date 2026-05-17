@@ -214,3 +214,30 @@ export type RoundScore = {
   readonly winner: PlayerId;
   readonly pabloCallerWasLowest: boolean | null;
 };
+
+// -----------------------------------------------------------------------------
+// Match — wraps multiple rounds, tracks cumulative scoring, knows when to end.
+//
+// A `GameState` represents a single round. A `MatchState` represents a series
+// of rounds played to a score cap (`rules.maxScore`). Keep this distinction
+// crisp: the engine deals/applies/scores rounds; the match layer schedules them
+// and decides when the whole thing is over.
+// -----------------------------------------------------------------------------
+
+export type MatchStatus = 'in_progress' | 'between_rounds' | 'ended';
+
+export type MatchState = {
+  readonly id: string;
+  readonly players: ReadonlyArray<PlayerId>;
+  readonly rules: GameRules;
+  /** Seed for the overall match. Each round derives its own seed from this. */
+  readonly seed: string;
+  /** Current round's game state. Null when status === 'between_rounds'. */
+  readonly currentRound: GameState | null;
+  readonly cumulativeScores: Readonly<Record<PlayerId, number>>;
+  /** History of completed rounds (length = roundsCompleted). */
+  readonly roundHistory: ReadonlyArray<RoundScore>;
+  readonly status: MatchStatus;
+  /** Set when status === 'ended'. The player with the LOWEST cumulative score. */
+  readonly winner: PlayerId | null;
+};
