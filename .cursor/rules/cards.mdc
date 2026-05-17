@@ -1,0 +1,57 @@
+---
+description: Card rendering and animation conventions
+globs: apps/mobile/src/components/cards/**,apps/mobile/src/design/cardTheme.ts
+alwaysApply: false
+---
+
+# Card rules
+
+Cards are the centerpiece of the app. They must look good, animate smoothly, and be themable without rewriting components.
+
+## Stack
+
+- **`@shopify/react-native-skia`** for drawing card surfaces (faces, backs, suit pips).
+- **`react-native-reanimated`** for all card animation (worklets only — no JS-thread timers).
+- **`react-native-gesture-handler`** for drag/tap.
+
+Do NOT use: `react-native-svg` for card art, raster PNGs, `Animated` from `react-native` (use Reanimated's `Animated`), `setInterval` or `requestAnimationFrame` for animation.
+
+## Hard rules
+
+- **One `<PlayingCard>` component renders every card.** It takes `card`, `faceUp`, and `theme` props. Never branch on rank/suit at higher levels of the tree.
+- **No hardcoded colors, glyphs, or paths in card components.** Everything decorative comes from the `CardTheme` prop.
+- **Animations live in worklets** (`useAnimatedStyle`, `useDerivedValue`, `withTiming`, `withSpring`). Don't compute styles on the JS thread per frame.
+- **Themes are config, not forks.** Adding a new theme means adding an entry to a themes registry, not duplicating components.
+
+## Component shape
+
+```tsx
+// apps/mobile/src/components/cards/PlayingCard.tsx (sketch)
+type Props = {
+  card: Card;                  // from @pablo/engine
+  faceUp: boolean;
+  theme: CardTheme;            // from src/design/cardTheme
+  size?: { width: number; height: number };
+};
+export function PlayingCard({ card, faceUp, theme, size }: Props) {
+  // Skia <Canvas> for back; face contents driven by theme.face
+  // Flip animation via Reanimated rotateY worklet + perspective on parent
+}
+```
+
+## Animation cookbook
+
+| Animation | Tool | Notes |
+|---|---|---|
+| Flip | Reanimated `rotateY` 0→180 with `perspective` on parent; swap face at 90° | One shared value, derived `frontOpacity`/`backOpacity` |
+| Deal (deck → hand slot) | Reanimated `withTiming` on translate + bezier easing | Stagger via `withDelay(index * 80, ...)` |
+| Drag-to-swap | `Gesture.Pan()` → shared values → snap to nearest slot on release | Use `withSpring` for snap |
+| Discard | `withSequence(scale↓, translateY↑, opacity→0)` | |
+| Invalid-move shake | `withSequence(translateX +6, -6, +6, 0)` | 4 keyframes, total ~250ms |
+| Reveal sweep (end of round) | Stagger flips left-to-right | One shared value per row, derived per card |
+
+## Performance discipline
+
+- A typical round shows ≤24 cards. Skia handles this easily, but avoid re-rendering all of them on every state change — memoize on `(card.id, faceUp, theme.id)`.
+- For drag, the dragging card should re-parent into an overlay layer so its z-index isn't fighting the grid.
+- Do not allocate Skia paths inside render — build them once via `useMemo` keyed on the theme.

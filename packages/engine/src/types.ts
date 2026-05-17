@@ -30,9 +30,36 @@ export type Hand = ReadonlyArray<CardId>;
 
 export type GameStatus = 'waiting' | 'playing' | 'final_turns' | 'ended';
 
+/**
+ * Powers a card can grant when discarded directly from a deck draw.
+ *
+ * - 'peek_self'      — secretly look at one of your own cards
+ * - 'peek_opponent'  — secretly look at one of any opponent's cards
+ * - 'swap_blind'     — swap one of your cards with an opponent's, neither seeing them
+ *
+ * Add more (e.g. 'swap_sighted') as future variants need them.
+ */
+export type SpecialPower = 'peek_self' | 'peek_opponent' | 'swap_blind';
+
+/**
+ * Per-card scoring override. Takes precedence over the rank-based value.
+ * Example: King of Hearts worth 0 while other kings are worth 10.
+ */
+export type CardValueOverride = {
+  readonly suit: Suit;
+  readonly rank: Rank;
+  readonly value: number;
+};
+
 export type GameRules = {
-  readonly kingValue: 0 | 13;
-  readonly jackQueenValue: 10 | 11 | 12;
+  /** Default value for kings (overridable per-card via `cardValueOverrides`). */
+  readonly kingValue: number;
+  readonly queenValue: number;
+  readonly jackValue: number;
+  /** Per-card overrides; higher precedence than the rank-based value. */
+  readonly cardValueOverrides: ReadonlyArray<CardValueOverride>;
+  /** Map of card rank to its special power. Ranks not listed grant no power. */
+  readonly powers: Readonly<Partial<Record<Rank, SpecialPower>>>;
   readonly maxScore: number;
   readonly pabloPenalty: number;
   readonly initialHandSize: 4;
@@ -41,8 +68,17 @@ export type GameRules = {
 };
 
 export const DEFAULT_RULES: GameRules = {
-  kingValue: 0,
-  jackQueenValue: 10,
+  kingValue: 10,
+  queenValue: 10,
+  jackValue: 10,
+  cardValueOverrides: [
+    { suit: 'hearts', rank: 13, value: 0 },
+  ],
+  powers: {
+    7: 'peek_self',
+    8: 'peek_opponent',
+    9: 'swap_blind',
+  },
   maxScore: 100,
   pabloPenalty: 10,
   initialHandSize: 4,

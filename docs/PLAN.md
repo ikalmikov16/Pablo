@@ -54,7 +54,10 @@ Implement per `docs/SCHEMA.md`:
 
 ### Phase 5 — Game UI
 
-- [ ] Card components + Reanimated flip/drag animations
+Stack: `@shopify/react-native-skia` for card surfaces, `react-native-reanimated` v4 for animation, `react-native-gesture-handler` for touch. See `.cursor/rules/cards.mdc`.
+
+- [ ] `<PlayingCard>` Skia component reading `apps/mobile/src/design/cardTheme.ts` (stub already there)
+- [ ] Reanimated flip / deal / discard / shake animation primitives
 - [ ] Game screen: own hand grid, opponents row, deck/discard, action bar
 - [ ] Optimistic moves via local engine, reconciled on server confirm
 - [ ] End-of-round reveal animation + score display
@@ -79,6 +82,11 @@ Implement per `docs/SCHEMA.md`:
 | 2026-05-17 | English-only for v1, but `t()` everywhere | Cheap to add now, painful to retrofit |
 | 2026-05-17 | Light monorepo (`apps/`, `packages/`, `supabase/`) | Engine package boundary mechanically enforces "engine stays pure" |
 | 2026-05-17 | Zellige aesthetic as design seed | User preference; keep components themeable so we can lean in during Phase 6 |
+| 2026-05-17 | Default powers: 7=peek_self, 8=peek_opponent, 9=swap_blind | User's house rules (Tunisian variant); 10/J/Q have no power |
+| 2026-05-17 | Default king value = 10, except K♥ = 0 (per-card override) | User's house rules; expressed via `GameRules.cardValueOverrides` so other variants are config-only |
+| 2026-05-17 | `GameRules` carries `powers` map + `cardValueOverrides` | Full per-game customizability without code changes; future variants are just config |
+| 2026-05-17 | Card stack: Skia + Reanimated 4 + Gesture Handler | Skia chosen over react-native-svg because we need themable card surfaces and animatable shaders. No Moti — Reanimated worklets give us full control. |
+| 2026-05-17 | `CardTheme` type + `cardThemes` registry from day one | Adding a future theme = appending one entry, never touching components. |
 
 ## Proposed decisions (need user input)
 
