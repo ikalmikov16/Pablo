@@ -138,12 +138,10 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
   4. Rare random off-turn or on-turn `call_pablo` when estimated own hand value is low.
 - Deal animation, discard animation, end-of-round reveal (flip every opponent's hand face-up; show `round_ended.winners` and per-player totals).
 
-**Multi-round orchestration (engine no longer handles this)**
+**Single-round only (v1)**
 
-- The engine is single-round. Phase 4 must decide between:
-  - **A — single-round-per-tap** (simplest): "Play again" button creates a fresh `newGame` with a new seed; no cumulative scoreboard. Lowest hand wins, end of story.
-  - **B — best-of-N in the mock client**: a thin orchestrator in `mockClient.ts` keeps a running scoreboard across multiple `newGame` calls and shows the cumulative total. Engine remains untouched.
-- See "Proposed decisions" below for the open question.
+- One game = one round. "Play again" creates a fresh `newGame` with a new seed; no cumulative scoreboard, no best-of-N. Lowest hand wins, end of story.
+- Multi-round / session orchestration may be reconsidered post-launch.
 
 **Out of scope**
 
@@ -306,17 +304,13 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
 | 2026-05-18 | Phase 2.5 self-review — `peek_chosen` event is `{ type, playerId }` only; no indices                             | Indices are private to the picker. Test now asserts the event has no other fields so we can't accidentally regress and leak picks to spectators.                                                                                    |
 | 2026-05-18 | Phase 4 absorbs the new five-turn-option UI, peek-phase UX, and off-turn Pablo affordance                        | These all surface engine state that Phase 2.5 added; no engine work is required for them, just UI wiring in Phase 4. Plan section rewritten in this commit to reflect the new requirements.                                         |
 | 2026-05-18 | Phase 5 collapses `callPablo` edge function into `applyMove`                                                     | Phase 2.5 made `call_pablo` a plain `Move` variant. A dedicated endpoint adds no value — the move is uniformly validated by `applyMove`. SCHEMA.md updated to remove the row.                                                       |
+| 2026-05-18 | v1 ships single-round only (one game = one round); no multi-round / best-of-N mode                               | Engine is single-round after Phase 2.5; multi-round bookkeeping (mock-client or `sessions` table) is meaningful work that doesn't validate the core gameplay loop. Reconsider post-launch.                                          |
 
 ## Proposed decisions (need user input)
 
-- **Multi-round / session orchestration**: Phase 2.5 removed `MatchState` from the engine, so "best of N" or "play until someone hits 100" no longer has an in-engine home. Three options, ordered from least to most work:
-  1. **Single round per "Play" tap** — no scoreboard across games. Cheapest; ships fastest. Loses the cross-round tension.
-  2. **Best-of-N in the mock client only** (Phase 4) — `mockClient.ts` keeps an in-memory `sessionScoreboard`. Server-side multiplayer would have no scoreboard. Asymmetric.
-  3. **`sessions` table + thin orchestration in edge functions** (Phase 5+) — proper server-side multi-round. Most work; adds a new RLS surface.
-     Default proposal: **option 1 for v1, revisit before launch**. The engine is single-round, the experience can still be "one round = one game", and we ship sooner.
+_(none right now)_
 
 ## Open questions
 
 - Final Pablo special-card scheme is locked, but should the K♥ rule apply only to the King OF Hearts, or also the Heart suit in general? Currently: only K♥. Validate with a real game.
 - Bot difficulty levels — do we want Easy/Medium/Hard in Phase 4, or single difficulty for v1?
-- Should "quick play" exist as a single-round mode in addition to multi-round matches?
