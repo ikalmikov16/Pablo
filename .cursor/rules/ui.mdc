@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Mobile app rules
 
-The app is a thin client over the engine + Supabase. Routing is Expo Router. State is Zustand. Animations are Reanimated 3.
+The app is a thin client over the engine + Supabase. Routing is Expo Router. State is Zustand. Animations are Reanimated 4 (with the `react-native-worklets` split-out package).
 
 ## Hard rules
 

@@ -13,7 +13,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { tokens } from '../../design/tokens';
 import { t } from '../../i18n';
-import { useGameStore } from '../../store/provider';
+import { useGameStoreShallow } from '../../store/provider';
 import { selectActionBarItems } from '../../store/selectors';
 import type { ActionBarItem } from '../../store/selectors';
 
@@ -36,7 +36,7 @@ const LABELS: Readonly<Record<string, string>> = {
 };
 
 export function ActionBar({ onCompositeAction, onDispatchMove }: Props) {
-  const items = useGameStore(selectActionBarItems);
+  const items = useGameStoreShallow(selectActionBarItems);
 
   if (items.length === 0) return null;
 

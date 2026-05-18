@@ -3,9 +3,15 @@ import { DEFAULT_RULES, applyMove, computePlayerView, legalMoves, newGame } from
 
 import {
   getLegalMovesForPlayer,
+  selectActionBarItems,
   selectCanDraw,
+  selectLastPeekReveal,
+  selectMatchHandPairs,
   selectMyHandSlots,
   selectOpponentEntries,
+  selectPeekOverlayVisible,
+  selectPlayers,
+  selectPowerOverlayVisible,
   selectSelf,
   selectStatus,
   selectVersion,
@@ -44,6 +50,8 @@ function makeStoreSnapshot(overrides?: Partial<GameStore>): GameStore {
       peekPicks: [],
       endOfRoundVisible: false,
       peekOverlayVisible: false,
+      peekJustHappened: false,
+      lastPeekReveal: null,
       toast: null,
     },
     animQueue: { pending: [] },
@@ -60,6 +68,8 @@ function makeStoreSnapshot(overrides?: Partial<GameStore>): GameStore {
     dismissToast: () => {},
     setEndOfRoundVisible: () => {},
     setPeekOverlayVisible: () => {},
+    setPeekJustHappened: () => {},
+    setLastPeekReveal: () => {},
     ...overrides,
   };
   return base;
@@ -151,6 +161,158 @@ describe('selectVersion', () => {
 
   test('returns the stored version', () => {
     expect(selectVersion(makeStoreSnapshot({ version: 7 }))).toBe(7);
+  });
+});
+
+describe('selectPeekOverlayVisible', () => {
+  test('false when there is no view', () => {
+    expect(selectPeekOverlayVisible(makeStoreSnapshot())).toBe(false);
+  });
+
+  test('true in peek_phase before the player has peeked (pick phase)', () => {
+    const state = makeState();
+    const view = computePlayerView(state, HUMAN);
+    const s = makeStoreSnapshot({ view });
+    expect(selectPeekOverlayVisible(s)).toBe(true);
+  });
+
+  test('false in peek_phase once the player has peeked and not flagged for reveal', () => {
+    // Walk the engine through HUMAN peeking [0,1]; BOT has not peeked yet.
+    let state = makeState();
+    const peek = legalMoves(state, HUMAN).find((m) => m.type === 'choose_peek');
+    if (peek) {
+      const r = applyMove(state, peek);
+      if (r.ok) state = r.state;
+    }
+    const view = computePlayerView(state, HUMAN);
+    // status still peek_phase (bot hasn't peeked), but human knownCards filled.
+    expect(view.status).toBe('peek_phase');
+    const s = makeStoreSnapshot({ view });
+    expect(selectPeekOverlayVisible(s)).toBe(false);
+  });
+
+  test('stays visible in the reveal phase via peekJustHappened, even after status flips to playing', () => {
+    const state = advanceToPlaying();
+    const view = computePlayerView(state, HUMAN);
+    expect(view.status).toBe('playing');
+    // Without peekJustHappened the overlay is gone.
+    expect(selectPeekOverlayVisible(makeStoreSnapshot({ view }))).toBe(false);
+    // With peekJustHappened set, the overlay stays mounted so the player
+    // can memorise their cards.
+    const s = makeStoreSnapshot({
+      view,
+      ui: {
+        selection: { kind: 'none' },
+        dragInFlight: false,
+        peekPicks: [],
+        endOfRoundVisible: false,
+        peekOverlayVisible: false,
+        peekJustHappened: true,
+        lastPeekReveal: null,
+        toast: null,
+      },
+    });
+    expect(selectPeekOverlayVisible(s)).toBe(true);
+  });
+});
+
+describe('selectLastPeekReveal / selectPowerOverlayVisible', () => {
+  test('selectLastPeekReveal returns null by default', () => {
+    expect(selectLastPeekReveal(makeStoreSnapshot())).toBeNull();
+  });
+
+  test('selectLastPeekReveal returns the configured reveal', () => {
+    const reveal = { target: HUMAN, handIndex: 2 } as const;
+    const s = makeStoreSnapshot({
+      ui: {
+        selection: { kind: 'none' },
+        dragInFlight: false,
+        peekPicks: [],
+        endOfRoundVisible: false,
+        peekOverlayVisible: false,
+        peekJustHappened: false,
+        lastPeekReveal: reveal,
+        toast: null,
+      },
+    });
+    expect(selectLastPeekReveal(s)).toEqual(reveal);
+  });
+
+  test('selectPowerOverlayVisible is false without a pending power or reveal', () => {
+    const state = advanceToPlaying();
+    const view = computePlayerView(state, HUMAN);
+    expect(selectPowerOverlayVisible(makeStoreSnapshot({ view }))).toBe(false);
+  });
+
+  test('selectPowerOverlayVisible is true when a reveal is set, even with no pending power', () => {
+    const state = advanceToPlaying();
+    const view = computePlayerView(state, HUMAN);
+    const s = makeStoreSnapshot({
+      view,
+      ui: {
+        selection: { kind: 'none' },
+        dragInFlight: false,
+        peekPicks: [],
+        endOfRoundVisible: false,
+        peekOverlayVisible: false,
+        peekJustHappened: false,
+        lastPeekReveal: { target: HUMAN, handIndex: 0 },
+        toast: null,
+      },
+    });
+    expect(selectPowerOverlayVisible(s)).toBe(true);
+  });
+});
+
+describe('selector reference stability', () => {
+  // React 18's useSyncExternalStore (which Zustand v5 uses under the hood)
+  // calls each selector multiple times per render and requires the returned
+  // value to be reference-stable for the same input state — otherwise it
+  // warns "the result of getSnapshot should be cached" and can enter an
+  // infinite render loop. These tests pin that contract for the selectors
+  // that return derived collections.
+
+  test('selectMyHandSlots returns the same array reference for the same view', () => {
+    const state = makeState();
+    const view = computePlayerView(state, HUMAN);
+    const s = makeStoreSnapshot({ view });
+    expect(selectMyHandSlots(s)).toBe(selectMyHandSlots(s));
+  });
+
+  test('selectMyHandSlots returns a different array when the view changes', () => {
+    const state = makeState();
+    const v1 = computePlayerView(state, HUMAN);
+    const v2 = computePlayerView(state, HUMAN); // freshly computed → new ref
+    expect(selectMyHandSlots(makeStoreSnapshot({ view: v1 }))).not.toBe(
+      selectMyHandSlots(makeStoreSnapshot({ view: v2 })),
+    );
+  });
+
+  test('selectOpponentEntries returns the same array reference for the same view', () => {
+    const state = makeState();
+    const view = computePlayerView(state, HUMAN);
+    const s = makeStoreSnapshot({ view });
+    expect(selectOpponentEntries(s)).toBe(selectOpponentEntries(s));
+  });
+
+  test('selectActionBarItems returns the same array reference for the same view', () => {
+    const state = advanceToPlaying();
+    const view = computePlayerView(state, state.players[state.turnIndex]!);
+    const s = makeStoreSnapshot({ view });
+    expect(selectActionBarItems(s)).toBe(selectActionBarItems(s));
+  });
+
+  test('selectMatchHandPairs returns the same array reference for the same view', () => {
+    const state = advanceToPlaying();
+    const view = computePlayerView(state, state.players[state.turnIndex]!);
+    const s = makeStoreSnapshot({ view });
+    expect(selectMatchHandPairs(s)).toBe(selectMatchHandPairs(s));
+  });
+
+  test('selectPlayers returns the same empty array when no view is set', () => {
+    const s1 = makeStoreSnapshot();
+    const s2 = makeStoreSnapshot();
+    expect(selectPlayers(s1)).toBe(selectPlayers(s2));
   });
 });
 

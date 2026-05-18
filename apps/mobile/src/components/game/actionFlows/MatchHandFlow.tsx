@@ -1,32 +1,36 @@
 /**
- * MatchHandFlow — modal that lets the user pick two of their own slots for match_hand.
+ * MatchHandFlow — modal that lets the user pick two of their own slots for
+ * `match_hand`.
+ *
+ * Cards are rendered face-down here regardless of what the player has
+ * peeked — the whole point of `match_hand` is to test the player's memory.
+ * Surfacing peeked card faces in this overlay would give an unwanted hint.
+ *
+ * The grid is laid out via the shared `CardSlotGrid` so the slot order
+ * (and tile size) matches the main hand exactly.
  */
 
 import React, { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import type { Card } from '@pablo/engine';
-import { defaultCardTheme } from '../../../design/cardTheme';
 import { tokens } from '../../../design/tokens';
 import { t } from '../../../i18n';
-import { useGameStore } from '../../../store/provider';
+import { useGameStoreShallow } from '../../../store/provider';
 import { selectMatchHandPairs, selectMyHandSlots } from '../../../store/selectors';
-import { PlayingCard } from '../../cards/PlayingCard';
+import { CardSlotGrid, type CardSlot } from '../internal/CardSlotGrid';
 
-const CARD_W = 64;
-const CARD_H = Math.floor(CARD_W * 1.46);
-const FACE_DOWN_CARD: Card = { suit: 'spades', rank: 1 };
+const { width: SCREEN_W } = Dimensions.get('window');
+const GRID_WIDTH = SCREEN_W - tokens.space.xl * 2;
 
 type Props = {
-  readonly catalog: Readonly<Record<string, Card>>;
   readonly onConfirm: (a: number, b: number) => void;
   readonly onCancel: () => void;
 };
 
-export function MatchHandFlow({ catalog, onConfirm, onCancel }: Props) {
-  const slots = useGameStore(selectMyHandSlots);
-  const legalPairs = useGameStore(selectMatchHandPairs);
-  const [picks, setPicks] = useState<number[]>([]);
+export function MatchHandFlow({ onConfirm, onCancel }: Props) {
+  const slots = useGameStoreShallow(selectMyHandSlots);
+  const legalPairs = useGameStoreShallow(selectMatchHandPairs);
+  const [picks, setPicks] = useState<ReadonlyArray<number>>([]);
 
   function toggle(idx: number) {
     if (picks.includes(idx)) {
@@ -42,38 +46,27 @@ export function MatchHandFlow({ catalog, onConfirm, onCancel }: Props) {
       ([a, b]) => (a === picks[0] && b === picks[1]) || (a === picks[1] && b === picks[0]),
     );
 
+  // Slots are face-down regardless of peeked knowledge — memory test.
+  const gridSlots: ReadonlyArray<CardSlot> = slots.map((s) => ({
+    index: s.index,
+    card: null,
+  }));
+
   return (
     <View style={styles.overlay}>
       <View style={styles.sheet}>
         <Text style={styles.title}>{t('game.actionHint.pickTwoOwnSlots')}</Text>
 
-        <View style={styles.handRow}>
-          {slots.map((slot) => {
-            const picked = picks.includes(slot.index);
-            const card = slot.cardId ? catalog[slot.cardId] : null;
-            return (
-              <TouchableOpacity
-                key={slot.index}
-                onPress={() => toggle(slot.index)}
-                style={[styles.slotBtn, picked && styles.picked]}
-                activeOpacity={0.8}
-              >
-                <PlayingCard
-                  card={card ?? FACE_DOWN_CARD}
-                  faceUp={slot.faceUp}
-                  theme={defaultCardTheme}
-                  size={{ width: CARD_W, height: CARD_H }}
-                  draggable={false}
-                  flippable={false}
-                />
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <CardSlotGrid
+          slots={gridSlots}
+          gridWidth={GRID_WIDTH}
+          onTap={(slot) => toggle(slot.index)}
+          selectedIndices={picks}
+        />
 
         <View style={styles.btnRow}>
           <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} activeOpacity={0.8}>
-            <Text style={styles.cancelText}>{t('game.action.skipPower')}</Text>
+            <Text style={styles.cancelText}>{t('game.action.back')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.confirmBtn, !isLegalPair && styles.disabled]}
@@ -110,21 +103,6 @@ const styles = StyleSheet.create({
     fontWeight: tokens.font.weight.semibold,
     color: tokens.color.text.primary,
     textAlign: 'center',
-  },
-  handRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: tokens.space.sm,
-    flexWrap: 'wrap',
-  },
-  slotBtn: {
-    borderRadius: tokens.radius.md,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  picked: {
-    borderColor: tokens.color.accent.primary,
   },
   btnRow: {
     flexDirection: 'row',

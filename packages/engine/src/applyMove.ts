@@ -178,6 +178,62 @@ export function applyMove(state: GameState, move: Move): MoveResult {
       return { ok: true, state: newState, events };
     }
 
+    case 'peek_one': {
+      if (state.status === 'ended') return { ok: false, error: 'game_already_ended' };
+      if (state.status === 'playing') return { ok: false, error: 'not_peek_phase' };
+      if (!state.players.includes(move.playerId)) return { ok: false, error: 'not_in_game' };
+
+      const { handIndex } = move;
+      const hand = state.hands[move.playerId]!;
+      if (handIndex < 0 || handIndex >= hand.length) {
+        return { ok: false, error: 'invalid_hand_index' };
+      }
+
+      const myKnowledge = state.knownCards[move.playerId]?.[move.playerId] ?? {};
+      const alreadyPeekedCount = Object.keys(myKnowledge).length;
+      if (alreadyPeekedCount >= state.rules.initialPeekCount) {
+        return { ok: false, error: 'already_peeked' };
+      }
+      // Same slot twice — already-known, treat as a duplicate.
+      if (myKnowledge[handIndex] !== undefined) {
+        return { ok: false, error: 'duplicate_indices' };
+      }
+
+      const cardId = hand[handIndex]!;
+      const knownCards = setKnowledge(
+        state.knownCards,
+        move.playerId,
+        move.playerId,
+        handIndex,
+        cardId,
+      );
+
+      events.push({
+        type: 'peek_one_chosen',
+        playerId: move.playerId,
+        handIndex,
+        cardId,
+      });
+
+      const nowPeekedCount = alreadyPeekedCount + 1;
+      const playerJustFinished = nowPeekedCount === state.rules.initialPeekCount;
+      if (playerJustFinished) {
+        events.push({ type: 'peek_chosen', playerId: move.playerId });
+      }
+
+      const allPeeked = state.players.every(
+        (p) => Object.keys(knownCards[p]?.[p] ?? {}).length >= state.rules.initialPeekCount,
+      );
+
+      let newState: GameState = { ...state, knownCards };
+      if (allPeeked) {
+        newState = { ...newState, status: 'playing' };
+        events.push({ type: 'peek_phase_ended' });
+      }
+
+      return { ok: true, state: newState, events };
+    }
+
     // -----------------------------------------------------------------------
     // Draw phase
     // -----------------------------------------------------------------------

@@ -37,7 +37,7 @@ import { ToastHost } from '../../../src/components/game/ToastHost';
 import { tokens } from '../../../src/design/tokens';
 import { t } from '../../../src/i18n';
 import { botName, isBotId } from '../../../src/supabase/internal/room';
-import { useGameStore } from '../../../src/store/provider';
+import { useGameStore, useGameStoreShallow } from '../../../src/store/provider';
 import {
   getLegalMovesForPlayer,
   selectCanDraw,
@@ -45,9 +45,9 @@ import {
   selectDiscardTopCardId,
   selectDrawnCardId,
   selectEndOfRoundVisible,
-  selectIsLocalPowerPending,
   selectOpponentEntries,
   selectPeekOverlayVisible,
+  selectPowerOverlayVisible,
   selectView,
   selectVersion,
 } from '../../../src/store/selectors';
@@ -67,12 +67,14 @@ export default function GameScreen() {
   const discardTopCardId = useGameStore(selectDiscardTopCardId);
   const drawnCardId = useGameStore(selectDrawnCardId);
   const canDraw = useGameStore(selectCanDraw);
-  const opponents = useGameStore(selectOpponentEntries);
+  const opponents = useGameStoreShallow(selectOpponentEntries);
   const isPeekPhase = useGameStore(selectPeekOverlayVisible);
   const isEnded = useGameStore(selectEndOfRoundVisible);
-  const isLocalPowerPending = useGameStore(selectIsLocalPowerPending);
+  const isPowerOverlay = useGameStore(selectPowerOverlayVisible);
   const showToast = useGameStore((s) => s.showToast);
   const clearPeekPicks = useGameStore((s) => s.clearPeekPicks);
+  const setPeekJustHappened = useGameStore((s) => s.setPeekJustHappened);
+  const setLastPeekReveal = useGameStore((s) => s.setLastPeekReveal);
   const promoteView = useGameStore((s) => s.promoteView);
   const dequeueEvents = useGameStore((s) => s.dequeueEvents);
   const animQueue = useGameStore((s) => s.animQueue);
@@ -190,19 +192,25 @@ export default function GameScreen() {
 
       {/* ── Overlays ── */}
 
-      {isPeekPhase && view?.status === 'peek_phase' && (
+      {isPeekPhase && (
         <PeekOverlay
           catalog={catalog}
-          onConfirm={(indices) => {
+          onPeekOne={(move) => {
+            // Pin the overlay open even after the engine flips status to
+            // 'playing' (which happens the moment all players have peeked
+            // their quota) so the player has a beat to memorise.
+            setPeekJustHappened(true);
+            void dispatch(move);
+          }}
+          onDismiss={() => {
+            setPeekJustHappened(false);
             clearPeekPicks();
-            void dispatch({ type: 'choose_peek', playerId: self, indices });
           }}
         />
       )}
 
       {activeFlow === 'match_hand' && (
         <MatchHandFlow
-          catalog={catalog}
           onConfirm={(a, b) => {
             setActiveFlow(null);
             void dispatch({ type: 'match_hand', playerId: self, handIndexA: a, handIndexB: b });
@@ -213,7 +221,6 @@ export default function GameScreen() {
 
       {activeFlow === 'match_discard' && (
         <MatchDiscardFlow
-          catalog={catalog}
           onConfirm={(idx) => {
             setActiveFlow(null);
             void dispatch({ type: 'match_discard', playerId: self, handIndex: idx });
@@ -240,21 +247,26 @@ export default function GameScreen() {
         />
       )}
 
-      {isLocalPowerPending && (
+      {isPowerOverlay && (
         <PowerFlow
           catalog={catalog}
           displayName={getDisplayName}
-          onUsePeekSelf={(handIndex) =>
-            void dispatch({ type: 'use_peek_self', playerId: self, handIndex })
-          }
-          onUsePeekOpponent={(targetPlayer, targetHandIndex) =>
+          onUsePeekSelf={(handIndex) => {
+            // Pin the reveal sheet open before the engine resolves the move:
+            // `use_peek_self` advances the turn immediately, which would
+            // otherwise unmount the PowerFlow before the player sees the card.
+            setLastPeekReveal({ target: self, handIndex });
+            void dispatch({ type: 'use_peek_self', playerId: self, handIndex });
+          }}
+          onUsePeekOpponent={(targetPlayer, targetHandIndex) => {
+            setLastPeekReveal({ target: targetPlayer, handIndex: targetHandIndex });
             void dispatch({
               type: 'use_peek_opponent',
               playerId: self,
               targetPlayer,
               targetHandIndex,
-            })
-          }
+            });
+          }}
           onUseSwapBlind={(selfHandIndex, targetPlayer, targetHandIndex) =>
             void dispatch({
               type: 'use_swap_blind',
@@ -265,6 +277,7 @@ export default function GameScreen() {
             })
           }
           onSkip={() => void dispatch({ type: 'skip_power', playerId: self })}
+          onDismissReveal={() => setLastPeekReveal(null)}
         />
       )}
 

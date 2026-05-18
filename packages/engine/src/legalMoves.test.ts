@@ -29,13 +29,15 @@ function makePlayingGame(players = ['alice', 'bob'], seed = 'lm-test'): GameStat
 // ---------------------------------------------------------------------------
 
 describe('legalMoves — peek_phase', () => {
-  it('returns choose_peek combos for player who has not peeked', () => {
+  it('returns choose_peek combos AND peek_one moves for a player who has not peeked', () => {
     const state = makeGame();
     const moves = legalMoves(state, 'alice');
-    expect(moves.length).toBeGreaterThan(0);
-    expect(moves.every((m) => m.type === 'choose_peek')).toBe(true);
-    // C(4, 2) = 6 combinations.
-    expect(moves.length).toBe(6);
+    const chooseMoves = moves.filter((m) => m.type === 'choose_peek');
+    const oneMoves = moves.filter((m) => m.type === 'peek_one');
+    // C(4, 2) = 6 atomic combos.
+    expect(chooseMoves.length).toBe(6);
+    // 4 individual peek_one entries (one per slot).
+    expect(oneMoves.length).toBe(4);
   });
 
   it('returns empty for player who already peeked', () => {
@@ -49,6 +51,20 @@ describe('legalMoves — peek_phase', () => {
     if (!afterAlice.ok) return;
     const moves = legalMoves(afterAlice.state, 'alice');
     expect(moves.length).toBe(0);
+  });
+
+  it('after one peek_one, only the unpeeked-slot peek_one moves remain (no choose_peek)', () => {
+    const state = makeGame();
+    const r = applyMove(state, { type: 'peek_one', playerId: 'alice', handIndex: 1 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const moves = legalMoves(r.state, 'alice');
+    expect(moves.every((m) => m.type === 'peek_one')).toBe(true);
+    // 3 remaining slots.
+    expect(moves.length).toBe(3);
+    // slot 1 should not appear again.
+    const slot1Present = moves.some((m) => m.type === 'peek_one' && m.handIndex === 1);
+    expect(slot1Present).toBe(false);
   });
 
   it('returns empty for unknown player during peek_phase', () => {

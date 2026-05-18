@@ -109,15 +109,37 @@ export type HandSlot = {
   readonly faceUp: boolean;
 };
 
+/**
+ * Many UI-shaped selectors below (hand slots, action items, legal pairs) build
+ * arrays of freshly allocated objects. React 18's `useSyncExternalStore` (which
+ * Zustand v5 uses internally) calls the selector multiple times per render and
+ * requires the result to be reference-stable; Zustand's `useShallow` only
+ * helps if the *elements* compare equal via `Object.is`, which fresh objects
+ * never do.
+ *
+ * The fix: cache the derived value against the `PlayerView` it was computed
+ * from in a `WeakMap`. Two calls with the same `view` get the same array
+ * back; when the view ref changes (i.e. the store received a new view) the
+ * cache key changes too and the value is recomputed. Memory is reclaimed
+ * automatically when views are garbage-collected.
+ */
+const EMPTY_HAND_SLOTS: ReadonlyArray<HandSlot> = [];
+const handSlotsCache = new WeakMap<PlayerView, ReadonlyArray<HandSlot>>();
+
 export function selectMyHandSlots(s: GameStore): ReadonlyArray<HandSlot> {
   const v = s.view;
-  if (!v) return [];
+  if (!v) return EMPTY_HAND_SLOTS;
+  const cached = handSlotsCache.get(v);
+  if (cached) return cached;
   const me = v.players.find((p) => p.id === v.self);
-  if (!me) return [];
-  return Array.from({ length: me.handSize }, (_, i) => {
-    const known = me.knownCards[i] ?? null;
-    return { index: i, cardId: known, faceUp: known !== null };
-  });
+  const result: ReadonlyArray<HandSlot> = me
+    ? Array.from({ length: me.handSize }, (_, i) => {
+        const known = me.knownCards[i] ?? null;
+        return { index: i, cardId: known, faceUp: known !== null };
+      })
+    : EMPTY_HAND_SLOTS;
+  handSlotsCache.set(v, result);
+  return result;
 }
 
 export function selectMyHandSize(s: GameStore): number {
@@ -126,10 +148,17 @@ export function selectMyHandSize(s: GameStore): number {
   return v.players.find((p) => p.id === v.self)?.handSize ?? 0;
 }
 
+const EMPTY_OPPONENTS: ReadonlyArray<PlayerViewEntry> = [];
+const opponentEntriesCache = new WeakMap<PlayerView, ReadonlyArray<PlayerViewEntry>>();
+
 export function selectOpponentEntries(s: GameStore): ReadonlyArray<PlayerViewEntry> {
   const v = s.view;
-  if (!v) return [];
-  return v.players.filter((p) => p.id !== v.self);
+  if (!v) return EMPTY_OPPONENTS;
+  const cached = opponentEntriesCache.get(v);
+  if (cached) return cached;
+  const result = v.players.filter((p) => p.id !== v.self);
+  opponentEntriesCache.set(v, result);
+  return result;
 }
 
 // ─── Action-bar selectors ─────────────────────────────────────────────────────
@@ -140,13 +169,24 @@ export type ActionBarItem = {
   readonly enabled: boolean;
 };
 
+const EMPTY_ACTION_BAR: ReadonlyArray<ActionBarItem> = [];
+const actionBarCache = new WeakMap<PlayerView, ReadonlyArray<ActionBarItem>>();
+
 /**
  * Returns the five turn-option items for the action bar, plus contextual
  * draw-resolved items when a card is in hand.
  */
 export function selectActionBarItems(s: GameStore): ReadonlyArray<ActionBarItem> {
   const v = s.view;
-  if (!v || v.status !== 'playing') return [];
+  if (!v || v.status !== 'playing') return EMPTY_ACTION_BAR;
+  const cached = actionBarCache.get(v);
+  if (cached) return cached;
+  const result = computeActionBarItems(v);
+  actionBarCache.set(v, result);
+  return result;
+}
+
+function computeActionBarItems(v: PlayerView): ReadonlyArray<ActionBarItem> {
   const legal = getLegalMovesForPlayer(v, v.self);
   const legalTypes = new Set(legal.map((m) => m.type));
 
@@ -209,17 +249,27 @@ export function selectCanCallPablo(s: GameStore): boolean {
   return legal.some((m) => m.type === 'call_pablo');
 }
 
+const EMPTY_HAND_PAIRS: ReadonlyArray<readonly [HandIndex, HandIndex]> = [];
+const matchHandPairsCache = new WeakMap<
+  PlayerView,
+  ReadonlyArray<readonly [HandIndex, HandIndex]>
+>();
+
 /** All legal match_hand pairs for the local player. */
-export function selectMatchHandPairs(s: GameStore): ReadonlyArray<[HandIndex, HandIndex]> {
+export function selectMatchHandPairs(s: GameStore): ReadonlyArray<readonly [HandIndex, HandIndex]> {
   const v = s.view;
-  if (!v) return [];
+  if (!v) return EMPTY_HAND_PAIRS;
+  const cached = matchHandPairsCache.get(v);
+  if (cached) return cached;
   const legal = getLegalMovesForPlayer(v, v.self);
-  return legal
+  const result: ReadonlyArray<readonly [HandIndex, HandIndex]> = legal
     .filter((m) => m.type === 'match_hand')
     .map((m) => {
       const mm = m as Extract<typeof m, { type: 'match_hand' }>;
-      return [mm.handIndexA, mm.handIndexB] as [HandIndex, HandIndex];
+      return [mm.handIndexA, mm.handIndexB] as const;
     });
+  matchHandPairsCache.set(v, result);
+  return result;
 }
 
 /** All legal match_discard slot indices for the local player. */
@@ -263,6 +313,21 @@ export function selectIsLocalPowerPending(s: GameStore): boolean {
   const v = s.view;
   if (!v || !v.pendingPower) return false;
   return v.pendingPower.playerId === v.self;
+}
+
+export function selectLastPeekReveal(s: GameStore): GameStore['ui']['lastPeekReveal'] {
+  return s.ui.lastPeekReveal;
+}
+
+/**
+ * The PowerFlow overlay stays mounted while EITHER:
+ *  - a pending power belongs to the local player (pick phase), or
+ *  - a power-triggered peek reveal is being shown (the engine has
+ *    already advanced the turn, but we keep the overlay open until the
+ *    player taps "Got it" on the reveal card).
+ */
+export function selectPowerOverlayVisible(s: GameStore): boolean {
+  return selectIsLocalPowerPending(s) || s.ui.lastPeekReveal !== null;
 }
 
 // ─── Peek-phase selectors ─────────────────────────────────────────────────────
@@ -315,18 +380,31 @@ export function selectEndOfRoundVisible(s: GameStore): boolean {
   return s.ui.endOfRoundVisible || s.view?.status === 'ended';
 }
 
+/**
+ * The peek overlay has two phases for the local player:
+ *  1. Pick phase  — `status === 'peek_phase'` and the player hasn't peeked yet.
+ *  2. Reveal phase — the player has just submitted their peek (so their
+ *     `knownCards` are populated); we keep the overlay mounted so they can
+ *     memorise their cards even after the engine flips status to `playing`.
+ *     This phase lasts until the player taps "Got it", which clears
+ *     `ui.peekJustHappened`.
+ */
 export function selectPeekOverlayVisible(s: GameStore): boolean {
   const v = s.view;
-  if (!v || v.status !== 'peek_phase') return false;
+  if (!v) return false;
   const me = v.players.find((p) => p.id === v.self);
   if (!me) return false;
-  return Object.keys(me.knownCards).length < v.rules.initialPeekCount;
+  const peekedEnough = Object.keys(me.knownCards).length >= v.rules.initialPeekCount;
+  if (v.status === 'peek_phase' && !peekedEnough) return true;
+  if (peekedEnough && s.ui.peekJustHappened) return true;
+  return false;
 }
 
 // ─── Score / result selectors ─────────────────────────────────────────────────
 
+const EMPTY_PLAYERS: ReadonlyArray<PlayerViewEntry> = [];
 export function selectPlayers(s: GameStore): ReadonlyArray<PlayerViewEntry> {
-  return s.view?.players ?? [];
+  return s.view?.players ?? EMPTY_PLAYERS;
 }
 
 // ─── Version (for expectedVersion on applyMove calls) ────────────────────────

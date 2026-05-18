@@ -454,6 +454,47 @@ function applyMove(state, move) {
       }
       return { ok: true, state: newState, events };
     }
+    case "peek_one": {
+      if (state.status === "ended")
+        return { ok: false, error: "game_already_ended" };
+      if (state.status === "playing")
+        return { ok: false, error: "not_peek_phase" };
+      if (!state.players.includes(move.playerId))
+        return { ok: false, error: "not_in_game" };
+      const { handIndex } = move;
+      const hand = state.hands[move.playerId];
+      if (handIndex < 0 || handIndex >= hand.length) {
+        return { ok: false, error: "invalid_hand_index" };
+      }
+      const myKnowledge = state.knownCards[move.playerId]?.[move.playerId] ?? {};
+      const alreadyPeekedCount = Object.keys(myKnowledge).length;
+      if (alreadyPeekedCount >= state.rules.initialPeekCount) {
+        return { ok: false, error: "already_peeked" };
+      }
+      if (myKnowledge[handIndex] !== undefined) {
+        return { ok: false, error: "duplicate_indices" };
+      }
+      const cardId2 = hand[handIndex];
+      const knownCards = setKnowledge(state.knownCards, move.playerId, move.playerId, handIndex, cardId2);
+      events.push({
+        type: "peek_one_chosen",
+        playerId: move.playerId,
+        handIndex,
+        cardId: cardId2
+      });
+      const nowPeekedCount = alreadyPeekedCount + 1;
+      const playerJustFinished = nowPeekedCount === state.rules.initialPeekCount;
+      if (playerJustFinished) {
+        events.push({ type: "peek_chosen", playerId: move.playerId });
+      }
+      const allPeeked = state.players.every((p) => Object.keys(knownCards[p]?.[p] ?? {}).length >= state.rules.initialPeekCount);
+      let newState = { ...state, knownCards };
+      if (allPeeked) {
+        newState = { ...newState, status: "playing" };
+        events.push({ type: "peek_phase_ended" });
+      }
+      return { ok: true, state: newState, events };
+    }
     case "draw_from_deck": {
       const guard = assertCurrentPlayer(state, move.playerId);
       if (guard)
@@ -913,16 +954,24 @@ function legalMoves(state, playerId) {
     if (!state.players.includes(playerId))
       return [];
     const myKnowledge = state.knownCards[playerId]?.[playerId] ?? {};
-    if (Object.keys(myKnowledge).length > 0)
+    const alreadyPeekedCount = Object.keys(myKnowledge).length;
+    const peekCount = state.rules.initialPeekCount;
+    if (alreadyPeekedCount >= peekCount)
       return [];
     const hand2 = state.hands[playerId];
-    const peekCount = state.rules.initialPeekCount;
     const indices = Array.from({ length: hand2.length }, (_, i) => i);
-    return combinations(indices, peekCount).map((combo) => ({
-      type: "choose_peek",
-      playerId,
-      indices: combo
-    }));
+    const moves = [];
+    if (alreadyPeekedCount === 0) {
+      for (const combo of combinations(indices, peekCount)) {
+        moves.push({ type: "choose_peek", playerId, indices: combo });
+      }
+    }
+    for (const idx of indices) {
+      if (myKnowledge[idx] !== undefined)
+        continue;
+      moves.push({ type: "peek_one", playerId, handIndex: idx });
+    }
+    return moves;
   }
   const isCurrentPlayer = state.players[state.turnIndex] === playerId;
   const hand = state.hands[playerId] ?? [];

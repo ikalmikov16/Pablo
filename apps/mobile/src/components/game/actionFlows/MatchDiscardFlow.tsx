@@ -1,63 +1,49 @@
 /**
- * MatchDiscardFlow — lets the user pick which of their slots to match against
- * the current discard top.
+ * MatchDiscardFlow — overlay that lets the user pick which of their own
+ * slots to match against the current discard top.
+ *
+ * Cards are rendered face-down (memory test). Legal slots are tappable;
+ * other slots are dimmed and non-interactive.
  */
 
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import type { Card } from '@pablo/engine';
-import { defaultCardTheme } from '../../../design/cardTheme';
 import { tokens } from '../../../design/tokens';
 import { t } from '../../../i18n';
-import { useGameStore } from '../../../store/provider';
+import { useGameStoreShallow } from '../../../store/provider';
 import { selectMatchDiscardSlots, selectMyHandSlots } from '../../../store/selectors';
-import { PlayingCard } from '../../cards/PlayingCard';
+import { CardSlotGrid, type CardSlot } from '../internal/CardSlotGrid';
 
-const CARD_W = 64;
-const CARD_H = Math.floor(CARD_W * 1.46);
-const FACE_DOWN_CARD: Card = { suit: 'spades', rank: 1 };
+const { width: SCREEN_W } = Dimensions.get('window');
+const GRID_WIDTH = SCREEN_W - tokens.space.xl * 2;
 
 type Props = {
-  readonly catalog: Readonly<Record<string, Card>>;
   readonly onConfirm: (index: number) => void;
   readonly onCancel: () => void;
 };
 
-export function MatchDiscardFlow({ catalog, onConfirm, onCancel }: Props) {
-  const slots = useGameStore(selectMyHandSlots);
-  const legalSlots = useGameStore(selectMatchDiscardSlots);
+export function MatchDiscardFlow({ onConfirm, onCancel }: Props) {
+  const slots = useGameStoreShallow(selectMyHandSlots);
+  const legalSlots = useGameStoreShallow(selectMatchDiscardSlots);
+
+  const gridSlots: ReadonlyArray<CardSlot> = slots.map((s) => ({
+    index: s.index,
+    card: null,
+  }));
 
   return (
     <View style={styles.overlay}>
       <View style={styles.sheet}>
         <Text style={styles.title}>{t('game.actionHint.pickOwnSlot')}</Text>
-        <View style={styles.handRow}>
-          {slots.map((slot) => {
-            const isLegal = legalSlots.includes(slot.index);
-            const card = slot.cardId ? catalog[slot.cardId] : null;
-            return (
-              <TouchableOpacity
-                key={slot.index}
-                onPress={() => isLegal && onConfirm(slot.index)}
-                disabled={!isLegal}
-                activeOpacity={0.8}
-                style={[styles.slotBtn, !isLegal && styles.dimmed]}
-              >
-                <PlayingCard
-                  card={card ?? FACE_DOWN_CARD}
-                  faceUp={slot.faceUp}
-                  theme={defaultCardTheme}
-                  size={{ width: CARD_W, height: CARD_H }}
-                  draggable={false}
-                  flippable={false}
-                />
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <CardSlotGrid
+          slots={gridSlots}
+          gridWidth={GRID_WIDTH}
+          legalIndices={legalSlots}
+          onTap={(slot) => onConfirm(slot.index)}
+        />
         <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} activeOpacity={0.8}>
-          <Text style={styles.cancelText}>{t('game.action.skipPower')}</Text>
+          <Text style={styles.cancelText}>{t('game.action.back')}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -85,19 +71,6 @@ const styles = StyleSheet.create({
     fontWeight: tokens.font.weight.semibold,
     color: tokens.color.text.primary,
     textAlign: 'center',
-  },
-  handRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: tokens.space.sm,
-    flexWrap: 'wrap',
-  },
-  slotBtn: {
-    borderRadius: tokens.radius.md,
-    overflow: 'hidden',
-  },
-  dimmed: {
-    opacity: 0.35,
   },
   cancelBtn: {
     borderWidth: 1,

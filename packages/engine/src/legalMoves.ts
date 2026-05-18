@@ -23,17 +23,33 @@ export function legalMoves(state: GameState, playerId: PlayerId): ReadonlyArray<
   if (state.status === 'peek_phase') {
     if (!state.players.includes(playerId)) return [];
     const myKnowledge = state.knownCards[playerId]?.[playerId] ?? {};
-    if (Object.keys(myKnowledge).length > 0) return []; // already peeked
+    const alreadyPeekedCount = Object.keys(myKnowledge).length;
+    const peekCount = state.rules.initialPeekCount;
+    if (alreadyPeekedCount >= peekCount) return []; // already peeked the quota
 
     const hand = state.hands[playerId]!;
-    const peekCount = state.rules.initialPeekCount;
     const indices = Array.from({ length: hand.length }, (_, i) => i);
 
-    return combinations(indices, peekCount).map((combo) => ({
-      type: 'choose_peek' as const,
-      playerId,
-      indices: combo,
-    }));
+    // The atomic `choose_peek` is only legal when the player hasn't peeked
+    // any cards yet (i.e. fresh hand). For partial peeks, only individual
+    // `peek_one` moves are legal — the engine doesn't accept a `choose_peek`
+    // that would overlap existing knowledge.
+    const moves: Move[] = [];
+
+    if (alreadyPeekedCount === 0) {
+      for (const combo of combinations(indices, peekCount)) {
+        moves.push({ type: 'choose_peek', playerId, indices: combo });
+      }
+    }
+
+    // Incremental `peek_one` is always legal until the quota fills, for any
+    // slot the player doesn't yet know.
+    for (const idx of indices) {
+      if (myKnowledge[idx] !== undefined) continue;
+      moves.push({ type: 'peek_one', playerId, handIndex: idx });
+    }
+
+    return moves;
   }
 
   // ------------------------------------------------------------------

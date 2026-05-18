@@ -7,6 +7,7 @@
 
 import React, { createContext, useContext, useEffect, useRef, type PropsWithChildren } from 'react';
 import { useStore } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 
 import type { GameId, PabloClient } from '../supabase/types';
 import { createGameStore, type GameStore, type GameStoreInstance } from './gameStore';
@@ -19,6 +20,20 @@ export function useGameStore<T>(selector: (s: GameStore) => T): T {
   const store = useContext(GameStoreContext);
   if (!store) throw new Error('useGameStore used outside GameStoreProvider');
   return useStore(store, selector);
+}
+
+/**
+ * Same as `useGameStore`, but compares the selector's return value with a
+ * shallow equality check. Use this whenever the selector returns a freshly
+ * allocated array/object (e.g. `.filter`, `.map`, `Array.from`, spread
+ * literals) — otherwise React's `useSyncExternalStore` will warn that
+ * "the result of getSnapshot should be cached" and may enter an infinite
+ * render loop.
+ */
+export function useGameStoreShallow<T>(selector: (s: GameStore) => T): T {
+  const store = useContext(GameStoreContext);
+  if (!store) throw new Error('useGameStoreShallow used outside GameStoreProvider');
+  return useStore(store, useShallow(selector));
 }
 
 // ─── Provider ─────────────────────────────────────────────────────────────────

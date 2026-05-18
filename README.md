@@ -4,7 +4,7 @@ A multiplayer card game inspired by the Tunisian classic, built with Expo (React
 
 ## Stack
 
-- **Mobile/Web client**: Expo (React Native) + Expo Router + TypeScript + Zustand + Reanimated 3
+- **Mobile/Web client**: Expo (React Native) + Expo Router + TypeScript + Zustand + Reanimated 4
 - **Backend**: Supabase (Postgres + Realtime + Auth + Edge Functions)
 - **Game engine**: pure TypeScript, framework-free (`packages/engine`)
 - **Package manager**: Bun (workspaces)

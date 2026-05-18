@@ -12,7 +12,7 @@ import type { Card, PlayerId } from '@pablo/engine';
 import { defaultCardTheme } from '../../design/cardTheme';
 import { tokens } from '../../design/tokens';
 import { t } from '../../i18n';
-import { useGameStore } from '../../store/provider';
+import { useGameStore, useGameStoreShallow } from '../../store/provider';
 import { selectPlayers, selectSelf, selectView } from '../../store/selectors';
 import { PlayingCard } from '../cards/PlayingCard';
 
@@ -28,7 +28,7 @@ type Props = {
 };
 
 export function EndOfRound({ catalog, displayName, onPlayAgain, onHome }: Props) {
-  const players = useGameStore(selectPlayers);
+  const players = useGameStoreShallow(selectPlayers);
   const self = useGameStore(selectSelf);
   const view = useGameStore(selectView);
 

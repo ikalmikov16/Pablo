@@ -276,6 +276,112 @@ describe('applyMove — choose_peek', () => {
 });
 
 // ---------------------------------------------------------------------------
+// peek_one — incremental peek
+// ---------------------------------------------------------------------------
+
+describe('applyMove — peek_one', () => {
+  it('happy path: adds one known card and emits peek_one_chosen', () => {
+    const state = makeGame();
+    const hand = state.hands['alice']!;
+    const result = applyMove(state, { type: 'peek_one', playerId: 'alice', handIndex: 0 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.knownCards['alice']?.['alice']?.[0]).toBe(hand[0]);
+    const ev = result.events.find((e) => e.type === 'peek_one_chosen');
+    expect(ev).toBeDefined();
+    if (ev && ev.type === 'peek_one_chosen') {
+      expect(ev.handIndex).toBe(0);
+      expect(ev.cardId).toBe(hand[0]!);
+    }
+    expect(result.state.status).toBe('peek_phase');
+  });
+
+  it('two incremental peeks for the same player finishes their quota (emits peek_chosen on the final one)', () => {
+    let s = makeGame();
+    const first = applyMove(s, { type: 'peek_one', playerId: 'alice', handIndex: 0 });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.events.some((e) => e.type === 'peek_chosen')).toBe(false);
+    s = first.state;
+    const second = applyMove(s, { type: 'peek_one', playerId: 'alice', handIndex: 2 });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.events.some((e) => e.type === 'peek_chosen')).toBe(true);
+    expect(Object.keys(second.state.knownCards['alice']?.['alice'] ?? {})).toHaveLength(2);
+  });
+
+  it('transitions to playing when every player has hit their quota via mixed move types', () => {
+    let s = makeGame(['alice', 'bob']);
+    // alice peeks incrementally
+    const a1 = applyMove(s, { type: 'peek_one', playerId: 'alice', handIndex: 0 });
+    if (!a1.ok) throw new Error('a1 failed');
+    const a2 = applyMove(a1.state, { type: 'peek_one', playerId: 'alice', handIndex: 1 });
+    if (!a2.ok) throw new Error('a2 failed');
+    s = a2.state;
+    expect(s.status).toBe('peek_phase');
+    // bob uses atomic choose_peek
+    const b = applyMove(s, { type: 'choose_peek', playerId: 'bob', indices: [0, 1] });
+    expect(b.ok).toBe(true);
+    if (!b.ok) return;
+    expect(b.state.status).toBe('playing');
+    expect(b.events.some((e) => e.type === 'peek_phase_ended')).toBe(true);
+  });
+
+  it('rejects a third peek_one for the same player', () => {
+    let s = makeGame();
+    const r1 = applyMove(s, { type: 'peek_one', playerId: 'alice', handIndex: 0 });
+    if (!r1.ok) throw new Error('r1 failed');
+    s = r1.state;
+    const r2 = applyMove(s, { type: 'peek_one', playerId: 'alice', handIndex: 1 });
+    if (!r2.ok) throw new Error('r2 failed');
+    s = r2.state;
+    const third = applyMove(s, { type: 'peek_one', playerId: 'alice', handIndex: 2 });
+    expect(third.ok).toBe(false);
+    if (third.ok) return;
+    expect(third.error).toBe('already_peeked');
+  });
+
+  it('rejects peeking the same slot twice', () => {
+    const state = makeGame();
+    const first = applyMove(state, { type: 'peek_one', playerId: 'alice', handIndex: 0 });
+    if (!first.ok) throw new Error('first failed');
+    const second = applyMove(first.state, {
+      type: 'peek_one',
+      playerId: 'alice',
+      handIndex: 0,
+    });
+    expect(second.ok).toBe(false);
+    if (second.ok) return;
+    expect(second.error).toBe('duplicate_indices');
+  });
+
+  it('rejects out-of-range hand index', () => {
+    const result = applyMove(makeGame(), { type: 'peek_one', playerId: 'alice', handIndex: 99 });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe('invalid_hand_index');
+  });
+
+  it('rejects unknown player', () => {
+    const result = applyMove(makeGame(), { type: 'peek_one', playerId: 'nobody', handIndex: 0 });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe('not_in_game');
+  });
+
+  it('rejects peek_one when status is playing', () => {
+    const result = applyMove(makePlayingGame(), {
+      type: 'peek_one',
+      playerId: 'alice',
+      handIndex: 0,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe('not_peek_phase');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // draw_from_deck
 // ---------------------------------------------------------------------------
 
@@ -664,10 +770,8 @@ describe('applyMove — match_hand', () => {
     let state = makePlayingGame();
     // Force hand to 2 cards of matching rank.
     const rank = state.cardCatalog[state.hands['alice']![0]!]!.rank;
-    let twoCardHand = state.hands['alice']!.slice(0, 2);
-    // Make both cards the same rank.
     state = placeRankInHandSlot(state, 'alice', 1, rank);
-    twoCardHand = state.hands['alice']!.slice(0, 2);
+    const twoCardHand = state.hands['alice']!.slice(0, 2);
     state = { ...state, hands: { ...state.hands, alice: twoCardHand } };
 
     const result = applyMove(state, {

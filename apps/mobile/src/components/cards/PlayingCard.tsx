@@ -18,15 +18,20 @@
  *  - Tap gesture toggles flip; Pan gesture drives drag; they race so a quick tap
  *    never accidentally starts a pan.
  *
- * Control model: uncontrolled. `faceUp` seeds the initial flip state on mount;
- * after that the card owns its flip state. Parents observe via `onFlip` rather
- * than driving faceUp themselves. Phase 4 may revisit if game logic needs to
- * force a card to a specific face.
+ * Control model:
+ *  - `faceUp` is the source of truth. When the prop changes, the card animates
+ *    to that face. This is what powers in-game flips driven by store updates
+ *    (e.g. PeekOverlay revealing a card after `peek_one` resolves).
+ *  - When `flippable` is true, the tap gesture also flips the card and fires
+ *    `onFlip`. Consumers that want the visual to follow their own state should
+ *    mirror it through `faceUp` from their side; tapping a flippable card
+ *    without echoing the flip in the parent state would lead to drift, so
+ *    `flippable` is reserved for self-contained lab/preview surfaces.
  */
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Canvas, Circle, Group, RoundedRect } from '@shopify/react-native-skia';
+import { Canvas, RoundedRect } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
@@ -52,6 +57,16 @@ export type PlayingCardProps = {
   draggable?: boolean;
   flippable?: boolean;
   onFlip?: (nowFaceUp: boolean) => void;
+  /**
+   * Called when the card is tapped. Wires the tap into PlayingCard's own
+   * gesture system, which is the only way to reliably receive a press here:
+   * even when `flippable` and `draggable` are false, the native gesture
+   * handler / Skia view tree captures touches in a way that interferes with
+   * a parent `TouchableOpacity` / `Pressable`. Consumers that need a tap
+   * (PeekOverlay, MatchHand/Discard, etc.) MUST use `onTap` and apply any
+   * visual selected/highlighted styling on a sibling view.
+   */
+  onTap?: () => void;
 };
 
 const DEFAULT_SIZE: PlayingCardSize = { width: 220, height: 320 };
@@ -84,27 +99,38 @@ function PlayingCardComponent({
   draggable = true,
   flippable = true,
   onFlip,
+  onTap,
 }: PlayingCardProps) {
   const { width: W, height: H } = size;
   const s = useMemo(() => sizesFor(W), [W]);
 
-  // flipProgress: 0 = back visible, 1 = front visible. Initial value only;
-  // subsequent flips are driven by the tap gesture (see "uncontrolled" note above).
+  // flipProgress: 0 = back visible, 1 = front visible.
   const flipProgress = useSharedValue(faceUp ? 1 : 0);
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
+
+  // Keep the flip animation in sync with the `faceUp` prop. When a parent
+  // updates `faceUp`, we animate to the new target rather than snapping.
+  useEffect(() => {
+    flipProgress.value = withTiming(faceUp ? 1 : 0, FLIP_TIMING);
+  }, [faceUp, flipProgress]);
 
   // --- Gestures ---
 
   const tapGesture = Gesture.Tap()
     .maxDuration(250)
-    .enabled(flippable)
+    .enabled(flippable || onTap !== undefined)
     .onEnd(() => {
       'worklet';
-      const nextValue = flipProgress.value < 0.5 ? 1 : 0;
-      flipProgress.value = withTiming(nextValue, FLIP_TIMING);
-      if (onFlip) {
-        runOnJS(onFlip)(nextValue === 1);
+      if (flippable) {
+        const nextValue = flipProgress.value < 0.5 ? 1 : 0;
+        flipProgress.value = withTiming(nextValue, FLIP_TIMING);
+        if (onFlip) {
+          runOnJS(onFlip)(nextValue === 1);
+        }
+      }
+      if (onTap) {
+        runOnJS(onTap)();
       }
     });
 
@@ -151,7 +177,6 @@ function PlayingCardComponent({
   const backElements = useMemo(
     () => ({
       bg: theme.back.palette.primary,
-      accent: theme.back.palette.accent,
       secondary: theme.back.palette.secondary,
       r: theme.border.radius,
     }),
@@ -173,129 +198,100 @@ function PlayingCardComponent({
   const label = rankLabel(card.rank);
   const glyph = suitGlyph(card.suit);
 
-  return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View style={[{ width: W, height: H }, rootStyle]}>
-        {/* ── BACK FACE ── */}
-        <Animated.View style={[StyleSheet.absoluteFillObject, backStyle, styles.face]}>
-          <Canvas style={StyleSheet.absoluteFillObject}>
-            {/* Background */}
-            <RoundedRect
-              x={0}
-              y={0}
-              width={W}
-              height={H}
-              r={backElements.r}
-              color={backElements.bg}
-            />
-            {/* Inner panel — slightly inset, secondary colour */}
-            <RoundedRect
-              x={8}
-              y={8}
-              width={W - 16}
-              height={H - 16}
-              r={Math.max(backElements.r - 4, 2)}
-              color={backElements.secondary}
-            />
-            {/* Geometric motif */}
-            <BackPattern width={W} height={H} accentColor={backElements.accent} />
-          </Canvas>
-        </Animated.View>
+  // The card is "interactive" if any of its gestures are wired up. When it's
+  // not interactive we skip the GestureDetector entirely, because a
+  // GestureDetector still claims touches even when every contained gesture
+  // is `.enabled(false)`, which would block a parent <Pressable>/<TouchableOpacity>.
+  const interactive = flippable || draggable || onTap !== undefined;
 
-        {/* ── FRONT FACE ── */}
-        <Animated.View style={[StyleSheet.absoluteFillObject, frontStyle, styles.face]}>
-          <Canvas style={StyleSheet.absoluteFillObject}>
-            {/* Background fill — covers the whole card with the face bg colour */}
-            <RoundedRect
-              x={0}
-              y={0}
-              width={W}
-              height={H}
-              r={faceElements.r}
-              color={faceElements.bg}
-            />
-            {/* Border — STROKE, not fill. Inset by half the stroke width so it
-                lands fully on-card rather than being clipped at the edge. */}
-            <RoundedRect
-              x={s.borderStroke / 2}
-              y={s.borderStroke / 2}
-              width={W - s.borderStroke}
-              height={H - s.borderStroke}
-              r={faceElements.r}
-              color={faceElements.border}
-              style="stroke"
-              strokeWidth={s.borderStroke}
-            />
-          </Canvas>
-
-          {/* RN text overlays (pointerEvents none so gestures hit the wrapper). */}
-          <View
-            style={[styles.cornerTopLeft, { top: s.cornerInsetY, left: s.cornerInsetX }]}
-            pointerEvents="none"
-          >
-            <Text style={[styles.rankText, { fontSize: s.rank, color: textColor }]}>{label}</Text>
-            <Text style={[styles.suitSmall, { fontSize: s.suitSmall, color: textColor }]}>
-              {glyph}
-            </Text>
-          </View>
-
-          <View style={styles.centerPip} pointerEvents="none">
-            <Text style={[styles.centerSuit, { fontSize: s.centerSuit, color: textColor }]}>
-              {glyph}
-            </Text>
-          </View>
-
-          <View
-            style={[
-              styles.cornerBottomRight,
-              styles.rotated,
-              { bottom: s.cornerInsetY, right: s.cornerInsetX },
-            ]}
-            pointerEvents="none"
-          >
-            <Text style={[styles.rankText, { fontSize: s.rank, color: textColor }]}>{label}</Text>
-            <Text style={[styles.suitSmall, { fontSize: s.suitSmall, color: textColor }]}>
-              {glyph}
-            </Text>
-          </View>
-        </Animated.View>
+  const inner = (
+    <Animated.View style={[{ width: W, height: H }, rootStyle]}>
+      {/* ── BACK FACE ──
+          Solid two-tone back: outer surface + slightly inset secondary panel.
+          A zellige-inspired pattern fill replaces this in Phase 6 (`design.mdc`). */}
+      <Animated.View style={[StyleSheet.absoluteFillObject, backStyle, styles.face]}>
+        <Canvas style={StyleSheet.absoluteFillObject}>
+          <RoundedRect
+            x={0}
+            y={0}
+            width={W}
+            height={H}
+            r={backElements.r}
+            color={backElements.bg}
+          />
+          <RoundedRect
+            x={8}
+            y={8}
+            width={W - 16}
+            height={H - 16}
+            r={Math.max(backElements.r - 4, 2)}
+            color={backElements.secondary}
+          />
+        </Canvas>
       </Animated.View>
-    </GestureDetector>
+
+      {/* ── FRONT FACE ── */}
+      <Animated.View style={[StyleSheet.absoluteFillObject, frontStyle, styles.face]}>
+        <Canvas style={StyleSheet.absoluteFillObject}>
+          {/* Background fill — covers the whole card with the face bg colour */}
+          <RoundedRect
+            x={0}
+            y={0}
+            width={W}
+            height={H}
+            r={faceElements.r}
+            color={faceElements.bg}
+          />
+          {/* Border — STROKE, not fill. Inset by half the stroke width so it
+              lands fully on-card rather than being clipped at the edge. */}
+          <RoundedRect
+            x={s.borderStroke / 2}
+            y={s.borderStroke / 2}
+            width={W - s.borderStroke}
+            height={H - s.borderStroke}
+            r={faceElements.r}
+            color={faceElements.border}
+            style="stroke"
+            strokeWidth={s.borderStroke}
+          />
+        </Canvas>
+
+        {/* RN text overlays (pointerEvents none so gestures hit the wrapper). */}
+        <View
+          style={[styles.cornerTopLeft, { top: s.cornerInsetY, left: s.cornerInsetX }]}
+          pointerEvents="none"
+        >
+          <Text style={[styles.rankText, { fontSize: s.rank, color: textColor }]}>{label}</Text>
+          <Text style={[styles.suitSmall, { fontSize: s.suitSmall, color: textColor }]}>
+            {glyph}
+          </Text>
+        </View>
+
+        <View style={styles.centerPip} pointerEvents="none">
+          <Text style={[styles.centerSuit, { fontSize: s.centerSuit, color: textColor }]}>
+            {glyph}
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.cornerBottomRight,
+            styles.rotated,
+            { bottom: s.cornerInsetY, right: s.cornerInsetX },
+          ]}
+          pointerEvents="none"
+        >
+          <Text style={[styles.rankText, { fontSize: s.rank, color: textColor }]}>{label}</Text>
+          <Text style={[styles.suitSmall, { fontSize: s.suitSmall, color: textColor }]}>
+            {glyph}
+          </Text>
+        </View>
+      </Animated.View>
+    </Animated.View>
   );
-}
 
-/** Simple geometric back pattern: a 5×7 grid of small accent-colored circles. */
-function BackPattern({
-  width,
-  height,
-  accentColor,
-}: {
-  width: number;
-  height: number;
-  accentColor: string;
-}) {
-  const cols = 5;
-  const rows = 7;
-  // Dot radius scales with card width so the motif reads on both full-size and thumbnail cards.
-  const r = Math.max(2, Math.round(width * 0.018));
-  const inset = Math.max(8, Math.round(width * 0.07));
-  const xStep = (width - 2 * inset) / (cols - 1);
-  const yStep = (height - 2 * inset) / (rows - 1);
-
-  const circles: { cx: number; cy: number }[] = [];
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      circles.push({ cx: inset + col * xStep, cy: inset + row * yStep });
-    }
-  }
-
-  return (
-    <Group>
-      {circles.map(({ cx, cy }, i) => (
-        <Circle key={i} cx={cx} cy={cy} r={r} color={accentColor} opacity={0.6} />
-      ))}
-    </Group>
-  );
+  if (!interactive) return inner;
+  return <GestureDetector gesture={gesture}>{inner}</GestureDetector>;
 }
 
 const styles = StyleSheet.create({

@@ -8,17 +8,17 @@ Pablo is a multiplayer card game (same family as Cabo / Cambio) shipping first o
 
 ## Stack — non-negotiable
 
-| Layer           | Choice                                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------------------------ |
-| Package manager | **Bun** (workspaces)                                                                                         |
-| Mobile/Web      | **Expo SDK 54+** with **Expo Router**, **TypeScript strict**                                                 |
-| State (client)  | **Zustand**                                                                                                  |
-| Animations      | **Reanimated 3** + (later) **react-native-skia** for card art                                                |
-| Backend         | **Supabase** — Postgres, Realtime, Auth (anonymous-first), Edge Functions                                    |
-| Edge runtime    | **Deno** (Supabase Edge Functions)                                                                           |
-| Game logic      | **Pure TypeScript** in `packages/engine` — runs in client (optimistic UI) and edge functions (authoritative) |
-| Tests           | **Bun test** for engine; integration tests for edge functions                                                |
-| i18n            | `expo-localization` — English only for v1, structured so French/Arabic drop in later                         |
+| Layer           | Choice                                                                                                                            |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Package manager | **Bun** (workspaces)                                                                                                              |
+| Mobile/Web      | **Expo SDK 54** with **Expo Router**, **TypeScript strict** (TS ~5.9.x; SDK 55 attempted but rolled back — see PLAN.md decisions) |
+| State (client)  | **Zustand**                                                                                                                       |
+| Animations      | **Reanimated 4** (with `react-native-worklets` companion) + **react-native-skia** for card art                                    |
+| Backend         | **Supabase** — Postgres, Realtime, Auth (anonymous-first), Edge Functions                                                         |
+| Edge runtime    | **Deno** (Supabase Edge Functions)                                                                                                |
+| Game logic      | **Pure TypeScript** in `packages/engine` — runs in client (optimistic UI) and edge functions (authoritative)                      |
+| Tests           | **Bun test** for engine; integration tests for edge functions                                                                     |
+| i18n            | `expo-localization` — English only for v1, structured so French/Arabic drop in later                                              |
 
 Do NOT introduce: Redux, Jest, npm/pnpm, Socket.io, a separate Node server, an ORM, or a UI library. If you think you need one of these, write the reason in `docs/PLAN.md` under "Proposed Decisions" and stop.
 

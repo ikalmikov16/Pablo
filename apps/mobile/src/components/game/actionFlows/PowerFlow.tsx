@@ -1,38 +1,50 @@
 /**
  * PowerFlow — overlay that lets the local player resolve a pending special
- * power (peek_self, peek_opponent, swap_blind) or skip it.
+ * power (peek_self, peek_opponent, swap_blind) and shows the reveal
+ * afterwards for the two peek powers.
  *
- * Visible whenever `pendingPower.playerId === self` and `status === 'playing'`.
+ * Mount semantics:
+ *  - Visible whenever `selectPowerOverlayVisible` is true. That is true
+ *    when either (a) a pending power belongs to the local player, or
+ *    (b) `ui.lastPeekReveal` is set (we just dispatched a peek power
+ *    and want to keep the reveal on screen even though the engine has
+ *    already advanced the turn and cleared `pendingPower`).
  *
  * Sub-states:
- *  - peek_self:     pick one own slot → fires use_peek_self → briefly reveal → close.
- *  - peek_opponent: pick opponent then slot → fires use_peek_opponent → reveal → close.
- *  - swap_blind:    pick own slot then opponent slot → fires use_swap_blind → close.
+ *  - peek_self     · pick stage: own hand in a 2×2 grid, all face-down.
+ *                  · reveal stage: only the picked slot, animated face-up,
+ *                    "Got it" dismisses.
+ *  - peek_opponent · stage 1: pick which opponent (button row).
+ *                  · stage 2: that opponent's hand in a 2×2 grid, face-down.
+ *                  · reveal stage: same as peek_self but for the opponent slot.
+ *  - swap_blind    · stage 1: own hand 2×2 (pick own slot).
+ *                  · stage 2: pick opponent.
+ *                  · stage 3: opponent hand 2×2 (face-down). Tap → submit.
  *
- * The "reveal" sub-state shows the picked card face-up for ~1.5 s (read from
- * the updated PlayerView, which the engine populates for the peeker only).
+ * Cards are NEVER shown face-up in the pick stage — the player relies on
+ * memory, exactly like the main hand grid.
  */
 
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import type { Card, HandIndex, PlayerId } from '@pablo/engine';
-import { defaultCardTheme } from '../../../design/cardTheme';
 import { tokens } from '../../../design/tokens';
 import { t } from '../../../i18n';
-import { useGameStore } from '../../../store/provider';
+import { useGameStore, useGameStoreShallow } from '../../../store/provider';
 import {
+  selectLastPeekReveal,
   selectMyHandSlots,
   selectOpponentEntries,
   selectPendingPower,
   selectSelf,
+  selectView,
 } from '../../../store/selectors';
-import { PlayingCard } from '../../cards/PlayingCard';
+import { CardSlotGrid, type CardSlot } from '../internal/CardSlotGrid';
 
-const CARD_W = 64;
-const CARD_H = Math.floor(CARD_W * 1.46);
-const REVEAL_MS = 1500;
-const FACE_DOWN_CARD: Card = { suit: 'spades', rank: 1 };
+const { width: SCREEN_W } = Dimensions.get('window');
+/** The sheet itself spans the screen; the grid sits inside with horizontal padding. */
+const GRID_WIDTH = SCREEN_W - tokens.space.xl * 2;
 
 type Props = {
   readonly catalog: Readonly<Record<string, Card>>;
@@ -41,6 +53,8 @@ type Props = {
   readonly onUsePeekOpponent: (target: PlayerId, handIndex: HandIndex) => void;
   readonly onUseSwapBlind: (selfIdx: HandIndex, target: PlayerId, targetIdx: HandIndex) => void;
   readonly onSkip: () => void;
+  /** Fires when the player dismisses the reveal sheet. */
+  readonly onDismissReveal: () => void;
 };
 
 export function PowerFlow({
@@ -50,31 +64,80 @@ export function PowerFlow({
   onUsePeekOpponent,
   onUseSwapBlind,
   onSkip,
+  onDismissReveal,
 }: Props) {
+  const view = useGameStore(selectView);
   const power = useGameStore(selectPendingPower);
   const self = useGameStore(selectSelf);
-  const slots = useGameStore(selectMyHandSlots);
-  const opponents = useGameStore(selectOpponentEntries);
+  const slots = useGameStoreShallow(selectMyHandSlots);
+  const opponents = useGameStoreShallow(selectOpponentEntries);
+  const lastPeekReveal = useGameStore(selectLastPeekReveal);
 
-  // Track what the user has picked so far for the active power.
   const [pickedOwnSlot, setPickedOwnSlot] = useState<HandIndex | null>(null);
   const [pickedOpponent, setPickedOpponent] = useState<PlayerId | null>(null);
-  const [submittedAt, setSubmittedAt] = useState<number | null>(null);
 
-  // Reset local state whenever the power changes (new pending power, or cleared).
+  // Reset local stage state when the active power or its owner changes.
+  // We KEY only on power identity, not its presence — if the user is in the
+  // reveal stage, `power` may already be null while we still want to show
+  // the reveal, and we don't want to reset the picked state in that window.
+  const powerKey = power ? `${power.power}:${power.playerId}:${power.rank}` : null;
   useEffect(() => {
     setPickedOwnSlot(null);
     setPickedOpponent(null);
-    setSubmittedAt(null);
-  }, [power?.power, power?.playerId, power?.rank]);
+  }, [powerKey]);
 
-  // After a peek_self / peek_opponent submission, the engine populates knownCards.
-  // We show the reveal for REVEAL_MS, then the parent closes us via store changes.
-  // (When pendingPower transitions to null, this component unmounts.)
+  // ─── Reveal stage (peek_self / peek_opponent) ──────────────────────────────
+
+  if (lastPeekReveal && self) {
+    // Look up the just-peeked card from the view: the engine has populated
+    // the peeker's knownCards for that target slot. While the new view is
+    // still draining through the animation queue, `knownCards[handIndex]`
+    // is undefined; we render a face-down card until it arrives.
+    const targetEntry = view?.players.find((p) => p.id === lastPeekReveal.target) ?? null;
+    const knownCardId = targetEntry?.knownCards[lastPeekReveal.handIndex] ?? null;
+    const card = knownCardId ? catalog[knownCardId] : null;
+    const targetLabel =
+      lastPeekReveal.target === self
+        ? t('game.actionHint.yourCard')
+        : displayName(lastPeekReveal.target);
+    const revealSlot: CardSlot = {
+      index: lastPeekReveal.handIndex,
+      card: card ?? null,
+    };
+
+    return (
+      <View style={styles.overlay}>
+        <View style={styles.sheet}>
+          <Text style={styles.title}>{targetLabel}</Text>
+          <Text style={styles.hint}>{t('game.actionHint.memoriseRevealed')}</Text>
+          <CardSlotGrid
+            slots={[revealSlot]}
+            gridWidth={GRID_WIDTH}
+            maxCardWidth={140}
+            faceUpFor={() => card !== null}
+          />
+          <TouchableOpacity
+            style={styles.confirmBtn}
+            onPress={onDismissReveal}
+            activeOpacity={0.8}
+            disabled={card === null}
+          >
+            <Text style={styles.confirmText}>{t('game.peek.gotIt')}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   if (!power || power.playerId !== self) return null;
 
-  const isRevealing = submittedAt !== null;
+  // Convert HandSlot → CardSlot for the grid. The pick stage NEVER shows
+  // peeked cards face-up, so we drop the `card` entirely — the grid will
+  // render the face-down placeholder.
+  const ownGridSlots: ReadonlyArray<CardSlot> = slots.map((s) => ({
+    index: s.index,
+    card: null,
+  }));
 
   // ─── peek_self ─────────────────────────────────────────────────────────────
 
@@ -84,42 +147,12 @@ export function PowerFlow({
         <View style={styles.sheet}>
           <Text style={styles.title}>{t('game.power.peek_self')}</Text>
           <Text style={styles.hint}>{t('game.actionHint.pickOwnSlot')}</Text>
-
-          <View style={styles.handRow}>
-            {slots.map((slot) => {
-              const card = slot.cardId ? catalog[slot.cardId] : null;
-              const showFace = isRevealing && card !== null;
-              return (
-                <TouchableOpacity
-                  key={slot.index}
-                  onPress={() => {
-                    if (isRevealing) return;
-                    setSubmittedAt(Date.now());
-                    onUsePeekSelf(slot.index);
-                  }}
-                  activeOpacity={0.8}
-                  disabled={isRevealing}
-                  style={styles.slotBtn}
-                >
-                  <PlayingCard
-                    card={card ?? FACE_DOWN_CARD}
-                    faceUp={showFace || slot.faceUp}
-                    theme={defaultCardTheme}
-                    size={{ width: CARD_W, height: CARD_H }}
-                    draggable={false}
-                    flippable={false}
-                  />
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <TouchableOpacity
-            style={styles.skipBtn}
-            onPress={onSkip}
-            activeOpacity={0.8}
-            disabled={isRevealing}
-          >
+          <CardSlotGrid
+            slots={ownGridSlots}
+            gridWidth={GRID_WIDTH}
+            onTap={(slot) => onUsePeekSelf(slot.index)}
+          />
+          <TouchableOpacity style={styles.skipBtn} onPress={onSkip} activeOpacity={0.8}>
             <Text style={styles.skipText}>{t('game.action.skipPower')}</Text>
           </TouchableOpacity>
         </View>
@@ -130,7 +163,6 @@ export function PowerFlow({
   // ─── peek_opponent ─────────────────────────────────────────────────────────
 
   if (power.power === 'peek_opponent') {
-    // Stage 1: pick opponent. Stage 2: pick their slot.
     const opponentToPeek = pickedOpponent ? opponents.find((o) => o.id === pickedOpponent) : null;
 
     return (
@@ -140,7 +172,7 @@ export function PowerFlow({
 
           {!opponentToPeek && (
             <>
-              <Text style={styles.hint}>{t('game.actionHint.pickOpponentSlot')}</Text>
+              <Text style={styles.hint}>{t('game.actionHint.pickOpponent')}</Text>
               <View style={styles.opponentBtnRow}>
                 {opponents.map((opp) => (
                   <TouchableOpacity
@@ -158,45 +190,21 @@ export function PowerFlow({
 
           {opponentToPeek && (
             <>
-              <Text style={styles.hint}>{displayName(opponentToPeek.id)}</Text>
-              <View style={styles.handRow}>
-                {Array.from({ length: opponentToPeek.handSize }, (_, i) => {
-                  const knownId = opponentToPeek.knownCards[i];
-                  const card = knownId ? catalog[knownId] : null;
-                  const showFace = isRevealing && card !== null;
-                  return (
-                    <TouchableOpacity
-                      key={i}
-                      onPress={() => {
-                        if (isRevealing) return;
-                        setSubmittedAt(Date.now());
-                        onUsePeekOpponent(opponentToPeek.id, i);
-                      }}
-                      activeOpacity={0.8}
-                      disabled={isRevealing}
-                      style={styles.slotBtn}
-                    >
-                      <PlayingCard
-                        card={card ?? FACE_DOWN_CARD}
-                        faceUp={showFace}
-                        theme={defaultCardTheme}
-                        size={{ width: CARD_W, height: CARD_H }}
-                        draggable={false}
-                        flippable={false}
-                      />
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <Text style={styles.hint}>
+                {t('game.actionHint.pickSlotOf', { name: displayName(opponentToPeek.id) })}
+              </Text>
+              <CardSlotGrid
+                slots={Array.from({ length: opponentToPeek.handSize }, (_, i) => ({
+                  index: i,
+                  card: null,
+                }))}
+                gridWidth={GRID_WIDTH}
+                onTap={(slot) => onUsePeekOpponent(opponentToPeek.id, slot.index)}
+              />
             </>
           )}
 
-          <TouchableOpacity
-            style={styles.skipBtn}
-            onPress={onSkip}
-            activeOpacity={0.8}
-            disabled={isRevealing}
-          >
+          <TouchableOpacity style={styles.skipBtn} onPress={onSkip} activeOpacity={0.8}>
             <Text style={styles.skipText}>{t('game.action.skipPower')}</Text>
           </TouchableOpacity>
         </View>
@@ -207,7 +215,6 @@ export function PowerFlow({
   // ─── swap_blind ────────────────────────────────────────────────────────────
 
   if (power.power === 'swap_blind') {
-    // Stage 1: pick own slot. Stage 2: pick opponent. Stage 3: pick opponent slot.
     const opponentToTarget = pickedOpponent ? opponents.find((o) => o.id === pickedOpponent) : null;
 
     return (
@@ -218,34 +225,17 @@ export function PowerFlow({
           {pickedOwnSlot === null && (
             <>
               <Text style={styles.hint}>{t('game.actionHint.pickOwnSlot')}</Text>
-              <View style={styles.handRow}>
-                {slots.map((slot) => {
-                  const card = slot.cardId ? catalog[slot.cardId] : null;
-                  return (
-                    <TouchableOpacity
-                      key={slot.index}
-                      onPress={() => setPickedOwnSlot(slot.index)}
-                      activeOpacity={0.8}
-                      style={styles.slotBtn}
-                    >
-                      <PlayingCard
-                        card={card ?? FACE_DOWN_CARD}
-                        faceUp={slot.faceUp}
-                        theme={defaultCardTheme}
-                        size={{ width: CARD_W, height: CARD_H }}
-                        draggable={false}
-                        flippable={false}
-                      />
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <CardSlotGrid
+                slots={ownGridSlots}
+                gridWidth={GRID_WIDTH}
+                onTap={(slot) => setPickedOwnSlot(slot.index)}
+              />
             </>
           )}
 
           {pickedOwnSlot !== null && !opponentToTarget && (
             <>
-              <Text style={styles.hint}>{t('game.actionHint.pickOpponentSlot')}</Text>
+              <Text style={styles.hint}>{t('game.actionHint.pickOpponent')}</Text>
               <View style={styles.opponentBtnRow}>
                 {opponents.map((opp) => (
                   <TouchableOpacity
@@ -263,28 +253,17 @@ export function PowerFlow({
 
           {pickedOwnSlot !== null && opponentToTarget && (
             <>
-              <Text style={styles.hint}>{displayName(opponentToTarget.id)}</Text>
-              <View style={styles.handRow}>
-                {Array.from({ length: opponentToTarget.handSize }, (_, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    onPress={() => {
-                      onUseSwapBlind(pickedOwnSlot, opponentToTarget.id, i);
-                    }}
-                    activeOpacity={0.8}
-                    style={styles.slotBtn}
-                  >
-                    <PlayingCard
-                      card={FACE_DOWN_CARD}
-                      faceUp={false}
-                      theme={defaultCardTheme}
-                      size={{ width: CARD_W, height: CARD_H }}
-                      draggable={false}
-                      flippable={false}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <Text style={styles.hint}>
+                {t('game.actionHint.pickSlotOf', { name: displayName(opponentToTarget.id) })}
+              </Text>
+              <CardSlotGrid
+                slots={Array.from({ length: opponentToTarget.handSize }, (_, i) => ({
+                  index: i,
+                  card: null,
+                }))}
+                gridWidth={GRID_WIDTH}
+                onTap={(slot) => onUseSwapBlind(pickedOwnSlot, opponentToTarget.id, slot.index)}
+              />
             </>
           )}
 
@@ -298,9 +277,6 @@ export function PowerFlow({
 
   return null;
 }
-
-// Keep REVEAL_MS referenced so future Phase 7 reveal-timing tweaks stay co-located.
-void REVEAL_MS;
 
 const styles = StyleSheet.create({
   overlay: {
@@ -329,16 +305,6 @@ const styles = StyleSheet.create({
     color: tokens.color.text.secondary,
     textAlign: 'center',
   },
-  handRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: tokens.space.sm,
-    flexWrap: 'wrap',
-  },
-  slotBtn: {
-    borderRadius: tokens.radius.md,
-    overflow: 'hidden',
-  },
   opponentBtnRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -352,6 +318,17 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
   },
   opponentBtnText: {
+    color: tokens.color.text.inverse,
+    fontWeight: tokens.font.weight.semibold,
+    fontSize: tokens.font.size.sm,
+  },
+  confirmBtn: {
+    backgroundColor: tokens.color.accent.primary,
+    borderRadius: tokens.radius.md,
+    paddingVertical: tokens.space.md,
+    alignItems: 'center',
+  },
+  confirmText: {
     color: tokens.color.text.inverse,
     fontWeight: tokens.font.weight.semibold,
     fontSize: tokens.font.size.sm,

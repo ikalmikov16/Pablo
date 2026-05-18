@@ -139,6 +139,19 @@ export type Move =
       /** Must be exactly rules.initialPeekCount unique in-range indices. */
       readonly indices: ReadonlyArray<HandIndex>;
     }
+  /**
+   * Incremental version of `choose_peek` for UI flows that reveal cards
+   * one tap at a time. Repeatedly calling `peek_one` accumulates the
+   * player's peeked indices until they hit `rules.initialPeekCount`, at
+   * which point the player is considered done peeking. The status flips
+   * to `playing` once every player has peeked their quota. Bots still
+   * use the atomic `choose_peek` move; `peek_one` is purely additive.
+   */
+  | {
+      readonly type: 'peek_one';
+      readonly playerId: PlayerId;
+      readonly handIndex: HandIndex;
+    }
   | { readonly type: 'draw_from_deck'; readonly playerId: PlayerId }
   | { readonly type: 'swap_drawn'; readonly playerId: PlayerId; readonly handIndex: HandIndex }
   | { readonly type: 'discard_drawn'; readonly playerId: PlayerId }
@@ -229,6 +242,16 @@ export type GameEvent =
     }
   /** Emitted when a player completes their initial peek choice. */
   | { readonly type: 'peek_chosen'; readonly playerId: PlayerId }
+  /**
+   * Emitted for every individual `peek_one` move. Distinct from `peek_chosen`,
+   * which fires once when the player completes the full atomic `choose_peek`.
+   */
+  | {
+      readonly type: 'peek_one_chosen';
+      readonly playerId: PlayerId;
+      readonly handIndex: HandIndex;
+      readonly cardId: CardId;
+    }
   /** Emitted once when the last player peeks and status flips to 'playing'. */
   | { readonly type: 'peek_phase_ended' }
   | {

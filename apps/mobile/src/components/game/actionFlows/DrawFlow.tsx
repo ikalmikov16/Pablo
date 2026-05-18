@@ -1,25 +1,47 @@
 /**
- * DrawFlow — sub-menu shown after draw_from_deck resolves.
- * Options: Swap into a slot, Discard (with power), Match drawn card.
+ * DrawFlow — overlay shown right after `draw_from_deck` resolves.
+ *
+ * The player has three options for the drawn card:
+ *  1. Discard it (and trigger any special power on rank 7/8/9).
+ *  2. Swap it into one of their own slots.
+ *  3. Match it against one of their own slots (rank-match drop).
+ *
+ * Both (2) and (3) require the player to choose *which* slot, so this
+ * overlay has three stages:
+ *  - 'main'        · drawn card preview + three action buttons.
+ *  - 'pickingSwap' · own hand in a 2×2 grid (face-down). Tap a legal slot
+ *                    to dispatch `swap_drawn` for that index.
+ *  - 'pickingMatch' · same grid, but only `match_drawn`-legal slots are
+ *                     tappable. Tap to dispatch.
+ *
+ * Cards are always face-down inside the slot picker (memory test); the
+ * legality (`legalIndices`) and back affordance come from the shared
+ * `CardSlotGrid` component.
  */
 
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import type { Card } from '@pablo/engine';
 import { defaultCardTheme } from '../../../design/cardTheme';
 import { tokens } from '../../../design/tokens';
 import { t } from '../../../i18n';
-import { useGameStore } from '../../../store/provider';
+import { useGameStore, useGameStoreShallow } from '../../../store/provider';
 import {
   selectDrawnCardId,
   selectMatchDrawnSlots,
+  selectMyHandSlots,
   selectSwapDrawnSlots,
 } from '../../../store/selectors';
 import { PlayingCard } from '../../cards/PlayingCard';
+import { CardSlotGrid, type CardSlot } from '../internal/CardSlotGrid';
 
-const CARD_W = 64;
-const CARD_H = Math.floor(CARD_W * 1.46);
+const { width: SCREEN_W } = Dimensions.get('window');
+const GRID_WIDTH = SCREEN_W - tokens.space.xl * 2;
+const DRAWN_CARD_W = 72;
+const DRAWN_CARD_H = Math.floor(DRAWN_CARD_W * 1.46);
+
+type Stage = 'main' | 'pickingSwap' | 'pickingMatch';
 
 type Props = {
   readonly catalog: Readonly<Record<string, Card>>;
@@ -30,53 +52,108 @@ type Props = {
 
 export function DrawFlow({ catalog, onSwap, onDiscard, onMatchDrawn }: Props) {
   const drawnCardId = useGameStore(selectDrawnCardId);
-  const swapSlots = useGameStore(selectSwapDrawnSlots);
-  const matchSlots = useGameStore(selectMatchDrawnSlots);
+  const slots = useGameStoreShallow(selectMyHandSlots);
+  const swapSlots = useGameStoreShallow(selectSwapDrawnSlots);
+  const matchSlots = useGameStoreShallow(selectMatchDrawnSlots);
+
+  const [stage, setStage] = useState<Stage>('main');
 
   const drawnCard = drawnCardId ? catalog[drawnCardId] : null;
+  const gridSlots: ReadonlyArray<CardSlot> = slots.map((s) => ({
+    index: s.index,
+    card: null,
+  }));
 
+  // Drawn-card preview is the only element that legitimately shows a face,
+  // so it's pulled out as a self-contained header inside the sheet.
+  const drawnPreview = drawnCard ? (
+    <View style={styles.drawnPreview}>
+      <PlayingCard
+        card={drawnCard}
+        faceUp={true}
+        theme={defaultCardTheme}
+        size={{ width: DRAWN_CARD_W, height: DRAWN_CARD_H }}
+        draggable={false}
+        flippable={false}
+      />
+      <Text style={styles.drawnLabel}>{t('game.drawn.label')}</Text>
+    </View>
+  ) : null;
+
+  if (stage === 'pickingSwap') {
+    return (
+      <View style={styles.overlay}>
+        <View style={styles.sheet}>
+          <Text style={styles.hint}>{t('game.actionHint.pickSlotToSwap')}</Text>
+          {drawnPreview}
+          <CardSlotGrid
+            slots={gridSlots}
+            gridWidth={GRID_WIDTH}
+            legalIndices={swapSlots}
+            onTap={(slot) => onSwap(slot.index)}
+          />
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setStage('main')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.cancelText}>{t('game.action.back')}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (stage === 'pickingMatch') {
+    return (
+      <View style={styles.overlay}>
+        <View style={styles.sheet}>
+          <Text style={styles.hint}>{t('game.actionHint.pickSlotToMatch')}</Text>
+          {drawnPreview}
+          <CardSlotGrid
+            slots={gridSlots}
+            gridWidth={GRID_WIDTH}
+            legalIndices={matchSlots}
+            onTap={(slot) => onMatchDrawn(slot.index)}
+          />
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setStage('main')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.cancelText}>{t('game.action.back')}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // 'main' stage
   return (
     <View style={styles.overlay}>
       <View style={styles.sheet}>
         <Text style={styles.hint}>{t('game.actionHint.afterDraw')}</Text>
-
-        {/* Drawn card preview */}
-        {drawnCard && (
-          <View style={styles.drawnPreview}>
-            <PlayingCard
-              card={drawnCard}
-              faceUp={true}
-              theme={defaultCardTheme}
-              size={{ width: CARD_W, height: CARD_H }}
-              draggable={false}
-              flippable={false}
-            />
-            <Text style={styles.drawnLabel}>{t('game.drawn.label')}</Text>
-          </View>
-        )}
+        {drawnPreview}
 
         <View style={styles.actions}>
-          {/* Discard */}
           <TouchableOpacity style={styles.actionBtn} onPress={onDiscard} activeOpacity={0.8}>
             <Text style={styles.actionText}>{t('game.action.discard')}</Text>
           </TouchableOpacity>
 
-          {/* Swap into slot */}
           {swapSlots.length > 0 && (
             <TouchableOpacity
               style={styles.actionBtn}
-              onPress={() => onSwap(swapSlots[0]!)}
+              onPress={() => setStage('pickingSwap')}
               activeOpacity={0.8}
             >
               <Text style={styles.actionText}>{t('game.action.swap')}</Text>
             </TouchableOpacity>
           )}
 
-          {/* Match drawn */}
           {matchSlots.length > 0 && (
             <TouchableOpacity
               style={[styles.actionBtn, styles.matchBtn]}
-              onPress={() => onMatchDrawn(matchSlots[0]!)}
+              onPress={() => setStage('pickingMatch')}
               activeOpacity={0.8}
             >
               <Text style={[styles.actionText, styles.matchText]}>{t('game.action.match')}</Text>
@@ -140,5 +217,17 @@ const styles = StyleSheet.create({
   },
   matchText: {
     color: tokens.color.text.inverse,
+  },
+  cancelBtn: {
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderColor: tokens.color.border.subtle,
+    borderRadius: tokens.radius.md,
+    paddingVertical: tokens.space.md,
+    alignItems: 'center',
+  },
+  cancelText: {
+    color: tokens.color.text.secondary,
+    fontSize: tokens.font.size.sm,
   },
 });

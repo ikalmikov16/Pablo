@@ -39,7 +39,9 @@
     },
     "peek": {
       "instruction": "Tap {{count}} of your cards to peek",
+      "memorise": "Memorise your cards",
       "confirm": "Confirm",
+      "gotIt": "Got it",
       "waitingForBots": "Waiting on {{remaining}} opponent…",
       "waitingForBotsPlural": "Waiting on {{remaining}} opponents…"
     },
@@ -51,6 +53,7 @@
       "swap": "Swap",
       "discard": "Discard",
       "match": "Match",
+      "back": "Back",
       "skipPower": "Skip",
       "usePeekSelf": "Peek your card",
       "usePeekOpponent": "Peek opponent",
@@ -60,7 +63,13 @@
       "afterDraw": "What will you do with the drawn card?",
       "pickOwnSlot": "Pick one of your cards.",
       "pickTwoOwnSlots": "Pick two of your cards.",
-      "pickOpponentSlot": "Pick an opponent's card."
+      "pickOpponentSlot": "Pick an opponent's card.",
+      "pickOpponent": "Pick an opponent.",
+      "pickSlotOf": "Pick one of {{name}}'s cards.",
+      "pickSlotToSwap": "Pick the card you want to swap.",
+      "pickSlotToMatch": "Pick the card you want to match.",
+      "memoriseRevealed": "Memorise it. Tap Got it when you're done.",
+      "yourCard": "Your card"
     },
     "match": {
       "fail": {

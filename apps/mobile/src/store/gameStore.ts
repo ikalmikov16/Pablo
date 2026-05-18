@@ -11,7 +11,7 @@
  * Components MUST use selectors from selectors.ts; never call useGameStore() directly.
  */
 
-import type { GameEvent, PlayerView } from '@pablo/engine';
+import type { GameEvent, PlayerId, PlayerView } from '@pablo/engine';
 import { createStore } from 'zustand';
 
 export type SlotSelection =
@@ -30,6 +30,32 @@ export type UiState = {
   readonly endOfRoundVisible: boolean;
   /** Whether the peek overlay is visible. */
   readonly peekOverlayVisible: boolean;
+  /**
+   * True from the moment the local player has tapped the required number of
+   * peek picks (and we've dispatched `choose_peek`) until they tap "Got it"
+   * to close the reveal. Used to keep the PeekOverlay mounted across the
+   * status transition from `peek_phase` → `playing` so the player has a
+   * chance to memorise their cards.
+   */
+  readonly peekJustHappened: boolean;
+  /**
+   * Set immediately after the local player dispatches `use_peek_self` or
+   * `use_peek_opponent` (the 7- and 8-card powers).
+   *
+   * The engine resolves those powers in one go: it populates the peeker's
+   * `knownCards` for that slot and `advanceTurn()`s, which clears
+   * `pendingPower`. Without this flag, `PowerFlow` would unmount the moment
+   * the new view promotes, giving the player no chance to see the card
+   * they just peeked.
+   *
+   * Cleared when the player taps "Got it" on the reveal sheet. The reveal
+   * UI reads the card itself out of `view.players[target].knownCards`, so
+   * this state only needs to track *which* slot we're revealing.
+   */
+  readonly lastPeekReveal: {
+    readonly target: PlayerId;
+    readonly handIndex: number;
+  } | null;
   /** Active toast message to show (null when none). */
   readonly toast: { readonly message: string; readonly id: number } | null;
 };
@@ -66,6 +92,8 @@ export type GameStoreActions = {
   dismissToast(): void;
   setEndOfRoundVisible(v: boolean): void;
   setPeekOverlayVisible(v: boolean): void;
+  setPeekJustHappened(v: boolean): void;
+  setLastPeekReveal(reveal: UiState['lastPeekReveal']): void;
 };
 
 export type GameStore = GameStoreState & GameStoreActions;
@@ -76,6 +104,8 @@ const defaultUi: UiState = {
   peekPicks: [],
   endOfRoundVisible: false,
   peekOverlayVisible: false,
+  peekJustHappened: false,
+  lastPeekReveal: null,
   toast: null,
 };
 
@@ -181,6 +211,14 @@ export function createGameStore() {
 
     setPeekOverlayVisible(v) {
       set((s) => ({ ui: { ...s.ui, peekOverlayVisible: v } }));
+    },
+
+    setPeekJustHappened(v) {
+      set((s) => ({ ui: { ...s.ui, peekJustHappened: v } }));
+    },
+
+    setLastPeekReveal(reveal) {
+      set((s) => ({ ui: { ...s.ui, lastPeekReveal: reveal } }));
     },
   }));
 }
