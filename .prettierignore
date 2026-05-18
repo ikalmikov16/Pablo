@@ -1,0 +1,14 @@
+node_modules
+.expo
+.next
+dist
+build
+coverage
+ios
+android
+*.lockb
+bun.lock
+bun.lockb
+.git
+supabase/.branches
+supabase/.temp

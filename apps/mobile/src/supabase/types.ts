@@ -8,12 +8,7 @@
  * Phase 6 swaps to the real client.
  */
 
-import type {
-  GameRules,
-  Move,
-  PlayerId,
-  PlayerView,
-} from '@pablo/engine';
+import type { GameRules, Move, PlayerId, PlayerView } from '@pablo/engine';
 
 export type RoomId = string;
 export type GameId = string;
@@ -39,7 +34,10 @@ export interface PabloClient {
   signIn(): Promise<ClientResult<PlayerId>>;
 
   /** Create a new room and join it as host. */
-  createRoom(opts: { rules?: Partial<GameRules>; maxPlayers?: number }): Promise<ClientResult<Room>>;
+  createRoom(opts: {
+    rules?: Partial<GameRules>;
+    maxPlayers?: number;
+  }): Promise<ClientResult<Room>>;
 
   /** Join an existing room by its short code. */
   joinRoom(opts: { code: string }): Promise<ClientResult<Room>>;
@@ -61,8 +59,5 @@ export interface PabloClient {
   subscribeRoom(roomId: RoomId, onChange: (room: Room) => void): Unsubscribe;
 
   /** Subscribe to the per-player view of an in-progress game. */
-  subscribePlayerView(
-    gameId: GameId,
-    onChange: (view: PlayerView) => void,
-  ): Unsubscribe;
+  subscribePlayerView(gameId: GameId, onChange: (view: PlayerView) => void): Unsubscribe;
 }

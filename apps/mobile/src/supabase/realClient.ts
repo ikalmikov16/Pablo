@@ -10,7 +10,5 @@ import type { PabloClient } from './types';
  * appears here — only in edge function environment variables.
  */
 export function createRealClient(): PabloClient {
-  throw new Error(
-    'realClient: not implemented — Phase 6 agent implements after Phase 5 ships',
-  );
+  throw new Error('realClient: not implemented — Phase 6 agent implements after Phase 5 ships');
 }

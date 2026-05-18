@@ -29,15 +29,15 @@ After your move, play proceeds to the next player.
 
 ## Special cards
 
-When a card is *discarded directly from the deck draw* (option 1 → Discard), its power activates. Players may choose not to use the power; the card is still discarded.
+When a card is _discarded directly from the deck draw_ (option 1 → Discard), its power activates. Players may choose not to use the power; the card is still discarded.
 
-| Card | Power |
-|---|---|
-| 7 | **Peek own**: secretly look at one of your own cards. |
-| 8 | **Peek opponent**: secretly look at one of any opponent's cards. |
-| 9 | **Blind swap**: swap one of your cards with one of any opponent's cards, without either of you seeing them. |
-| 10, Jack, Queen | No power. |
-| King | No power. (Scoring: 10 points, except **K♥ = 0** — see "Scoring".) |
+| Card            | Power                                                                                                       |
+| --------------- | ----------------------------------------------------------------------------------------------------------- |
+| 7               | **Peek own**: secretly look at one of your own cards.                                                       |
+| 8               | **Peek opponent**: secretly look at one of any opponent's cards.                                            |
+| 9               | **Blind swap**: swap one of your cards with one of any opponent's cards, without either of you seeing them. |
+| 10, Jack, Queen | No power.                                                                                                   |
+| King            | No power. (Scoring: 10 points, except **K♥ = 0** — see "Scoring".)                                          |
 
 > Note: Special powers activate ONLY when discarding directly from the deck. If you swap a 7 into your hand and the displaced card was a 7, that does not activate a power.
 
@@ -51,13 +51,13 @@ When a card is *discarded directly from the deck draw* (option 1 → Discard), i
 
 Each card's value:
 
-| Card | Value |
-|---|---|
-| Ace | 1 |
-| 2–10 | Face value |
-| Jack | 10 |
-| Queen | 10 |
-| King ♣ ♦ ♠ | 10 |
+| Card       | Value                     |
+| ---------- | ------------------------- |
+| Ace        | 1                         |
+| 2–10       | Face value                |
+| Jack       | 10                        |
+| Queen      | 10                        |
+| King ♣ ♦ ♠ | 10                        |
 | **King ♥** | **0** (per-card override) |
 
 A player's round score is the sum of their hand values.
@@ -77,18 +77,18 @@ Scores accumulate across rounds. The game ends when any player's cumulative scor
 
 The engine exposes a `GameRules` config so house rules are toggleable. Defaults below.
 
-| Setting | Default | Notes |
-|---|---|---|
-| `kingValue` | `10` | Default value for kings |
-| `queenValue` | `10` | |
-| `jackValue` | `10` | |
-| `cardValueOverrides` | `[{ suit: 'hearts', rank: 13, value: 0 }]` | Per-card overrides; takes precedence over rank value |
-| `powers` | `{ 7: 'peek_self', 8: 'peek_opponent', 9: 'swap_blind' }` | Rank → power map. Ranks not listed have no power. |
-| `maxScore` | `100` | Game ends when any player hits this |
-| `pabloPenalty` | `10` | Added to caller if they don't have the lowest |
-| `initialHandSize` | `4` | Fixed at 4 for now |
-| `initialPeekCount` | `2` | How many of your own cards you peek pre-game |
-| `allowDrawDiscardAndDiscard` | `false` | If `true`, you may draw from discard and then re-discard |
+| Setting                      | Default                                                   | Notes                                                    |
+| ---------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
+| `kingValue`                  | `10`                                                      | Default value for kings                                  |
+| `queenValue`                 | `10`                                                      |                                                          |
+| `jackValue`                  | `10`                                                      |                                                          |
+| `cardValueOverrides`         | `[{ suit: 'hearts', rank: 13, value: 0 }]`                | Per-card overrides; takes precedence over rank value     |
+| `powers`                     | `{ 7: 'peek_self', 8: 'peek_opponent', 9: 'swap_blind' }` | Rank → power map. Ranks not listed have no power.        |
+| `maxScore`                   | `100`                                                     | Game ends when any player hits this                      |
+| `pabloPenalty`               | `10`                                                      | Added to caller if they don't have the lowest            |
+| `initialHandSize`            | `4`                                                       | Fixed at 4 for now                                       |
+| `initialPeekCount`           | `2`                                                       | How many of your own cards you peek pre-game             |
+| `allowDrawDiscardAndDiscard` | `false`                                                   | If `true`, you may draw from discard and then re-discard |
 
 ### Power vocabulary
 

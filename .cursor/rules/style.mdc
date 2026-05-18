@@ -1,0 +1,40 @@
+---
+description: Workspace-wide code style — Prettier formatting and ESLint linting after every change
+globs: "**/*.{ts,tsx,js,jsx,mjs,cjs,json,md}"
+alwaysApply: true
+---
+
+# Style & quality gates
+
+This repo uses Prettier for formatting and ESLint for linting. Both are wired up at the workspace root.
+
+## After EVERY code edit
+
+Before reporting a task as done, run these in order:
+
+1. `bun run format` — Prettier auto-formats the whole repo. Always run after writing code.
+2. `bun run lint` — must exit clean (0 errors). Investigate warnings if they touch code you just wrote; fix them where reasonable rather than ignoring.
+3. `bun run typecheck` — must exit clean (0 errors).
+4. `bun test` — must exit clean. New behaviour must come with new tests.
+
+The single command `bun run check` runs the format-check + lint + typecheck + tests in sequence — prefer it as the canonical pre-commit / pre-PR gate.
+
+## Config locations
+
+- `.prettierrc.json` — Prettier rules. Do not override per-file unless absolutely necessary.
+- `.prettierignore` — paths Prettier skips (lockfiles, build output, etc.).
+- `eslint.config.mjs` — ESLint flat config. TypeScript-aware. Includes `eslint-config-prettier` so the two tools never disagree about formatting.
+- The engine package has stricter lint rules (no `Math.random`, no `Date.now`, no imports from `expo`/`react`/`react-native`/`@supabase/*`/Node built-ins). These are mechanically enforced.
+
+## Style rules
+
+- Single quotes, semicolons, trailing commas, 100-col print width, LF line endings (all in `.prettierrc.json` — do not hand-format).
+- No `any` unless absolutely necessary, and never in test infrastructure that mirrors production types.
+- Prefer `Readonly<T>` / `ReadonlyArray<T>` for public state shapes.
+- Prefer discriminated unions over enums.
+
+## When the linter flags your code
+
+- **Fix the code, not the rule.** Adding `eslint-disable` is a last resort and requires a one-line comment explaining why.
+- **Never** add `// prettier-ignore` to skip formatting unless preserving a specific layout is load-bearing (e.g. ASCII art tables). Comment why.
+- If a rule is genuinely wrong for the project, update `eslint.config.mjs` and document the change in `docs/PLAN.md` under "Decisions Made".

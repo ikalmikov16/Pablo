@@ -1,20 +1,66 @@
-import type { GameState, PlayerId, PlayerView } from './types';
+import type { GameState, HandIndex, PlayerId, PlayerView, PlayerViewEntry } from './types';
 
 /**
  * Project a full GameState into what `playerId` is allowed to see.
  *
- * STUB — the Phase 2 agent must implement:
- *  - Hide deck order (only return `deckCount`).
- *  - Hide opponent hidden cards.
- *  - Include cards `playerId` has peeked at (their own initial 2 bottom, plus any cards revealed by 7/8/9/10 powers).
- *  - Include the discard pile top.
+ * Hidden information:
+ *  - The exact deck order and cards (only `deckCount` is returned).
+ *  - Opponent hand cards that `playerId` has not peeked.
  *
- * NOTE: tracking "what `playerId` knows" requires per-player knowledge state.
- * The Phase 2 agent should decide whether that lives inside GameState or in a
- * sidecar structure. Document the decision in docs/PLAN.md.
+ * Visible information:
+ *  - Everything in `knownCards[playerId]` — initial peek + power reveals.
+ *  - The top of the discard pile.
+ *  - The drawn card, but only to the player who drew it.
+ *  - All public game scalars (status, turn, Pablo caller, etc.).
  */
 export function computePlayerView(state: GameState, playerId: PlayerId): PlayerView {
-  void state;
-  void playerId;
-  throw new Error('computePlayerView: not implemented');
+  if (!state.players.includes(playerId)) {
+    throw new Error(`computePlayerView: unknown player "${playerId}"`);
+  }
+
+  const currentPlayer = state.players[state.turnIndex]!;
+  const myKnowledge = state.knownCards[playerId] ?? {};
+
+  const players: PlayerViewEntry[] = state.players.map((id) => {
+    const hand = state.hands[id] ?? [];
+    const theirKnowledge = myKnowledge[id] ?? {};
+
+    // Build a knownCards map: only include slots that (a) are in the knowledge
+    // map AND (b) the card id still matches the actual hand (guards against
+    // stale knowledge after a swap).
+    const knownCards: Partial<Record<HandIndex, string>> = {};
+    for (const [indexStr, cardId] of Object.entries(theirKnowledge)) {
+      const idx = Number(indexStr) as HandIndex;
+      if (hand[idx] === cardId) {
+        knownCards[idx] = cardId;
+      }
+    }
+
+    return {
+      id,
+      handSize: hand.length,
+      knownCards,
+      score: state.scores[id] ?? 0,
+      isCurrentTurn: id === currentPlayer,
+    };
+  });
+
+  const discardTop = state.discard.length > 0 ? state.discard[state.discard.length - 1]! : null;
+
+  const drawnCardId =
+    state.drawn !== null && state.drawn.playerId === playerId ? state.drawn.cardId : null;
+
+  return {
+    self: playerId,
+    status: state.status,
+    roundNumber: state.roundNumber,
+    deckCount: state.deck.length,
+    discardTopCardId: discardTop,
+    currentPlayerId: currentPlayer,
+    players,
+    drawnCardId,
+    pabloCalledBy: state.pabloCalledBy,
+    finalTurnsRemaining: state.finalTurnsRemaining,
+    rules: state.rules,
+  };
 }

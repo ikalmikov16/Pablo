@@ -71,9 +71,7 @@ export const DEFAULT_RULES: GameRules = {
   kingValue: 10,
   queenValue: 10,
   jackValue: 10,
-  cardValueOverrides: [
-    { suit: 'hearts', rank: 13, value: 0 },
-  ],
+  cardValueOverrides: [{ suit: 'hearts', rank: 13, value: 0 }],
   powers: {
     7: 'peek_self',
     8: 'peek_opponent',
@@ -115,6 +113,22 @@ export type GameState = {
   readonly scores: Readonly<Record<PlayerId, number>>;
   readonly roundNumber: number;
   readonly rules: GameRules;
+  /**
+   * Per-player knowledge: knownCards[knower][target][handIndex] = cardId.
+   * Tracks every card a player has privately seen (initial peek, 7/8/9 powers).
+   * Updated as moves are applied; lives inside GameState so state is one
+   * serialisable blob and computePlayerView only needs a single argument.
+   */
+  readonly knownCards: Readonly<
+    Record<PlayerId, Readonly<Record<PlayerId, Readonly<Partial<Record<HandIndex, CardId>>>>>>
+  >;
+  /**
+   * Set while a special power is pending resolution (between the discard that
+   * activates the power and the use_power/skip_power move that resolves it).
+   */
+  readonly pendingPower: Readonly<{ rank: Rank; power: SpecialPower; playerId: PlayerId }> | null;
+  /** How many times the discard pile has been reshuffled into the deck this round. */
+  readonly reshuffleCount: number;
 };
 
 export type Move =
@@ -145,7 +159,12 @@ export type Move =
 
 export type GameEvent =
   | { readonly type: 'card_drawn'; readonly playerId: PlayerId; readonly from: 'deck' | 'discard' }
-  | { readonly type: 'card_swapped'; readonly playerId: PlayerId; readonly handIndex: HandIndex; readonly discardedCardId: CardId }
+  | {
+      readonly type: 'card_swapped';
+      readonly playerId: PlayerId;
+      readonly handIndex: HandIndex;
+      readonly discardedCardId: CardId;
+    }
   | { readonly type: 'card_discarded'; readonly cardId: CardId; readonly playerId: PlayerId }
   | {
       readonly type: 'peeked';
@@ -162,9 +181,20 @@ export type GameEvent =
       readonly targetHandIndex: HandIndex;
     }
   | { readonly type: 'pablo_called'; readonly playerId: PlayerId }
+  | { readonly type: 'final_turns_started'; readonly pabloCalledBy: PlayerId }
   | { readonly type: 'turn_ended'; readonly nextPlayer: PlayerId }
   | { readonly type: 'deck_reshuffled' }
-  | { readonly type: 'round_ended'; readonly scores: Readonly<Record<PlayerId, number>>; readonly winner: PlayerId };
+  | {
+      readonly type: 'round_ended';
+      readonly scores: Readonly<Record<PlayerId, number>>;
+      readonly winner: PlayerId;
+    }
+  | {
+      readonly type: 'power_activated';
+      readonly rank: Rank;
+      readonly power: SpecialPower;
+      readonly playerId: PlayerId;
+    };
 
 export type MoveResult =
   | { readonly ok: true; readonly state: GameState; readonly events: ReadonlyArray<GameEvent> }
@@ -177,6 +207,9 @@ export type MoveError =
   | 'already_drawn'
   | 'illegal_target'
   | 'power_not_available'
+  | 'power_pending'
+  | 'no_power_to_resolve'
+  | 'must_swap_after_discard_draw'
   | 'game_already_ended'
   | 'pablo_already_called'
   | 'discard_empty'
