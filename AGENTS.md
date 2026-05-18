@@ -32,6 +32,7 @@ Do NOT introduce: Redux, Jest, npm/pnpm, Socket.io, a separate Node server, an O
 6. **No game logic in components.** Components read state from Zustand selectors and dispatch moves. Logic lives in the engine.
 7. **No hardcoded user-visible strings in components.** Always go through `t()`. Even though we're English-only now.
 8. **No hardcoded colors.** Use design tokens. We will evolve toward a zellige-inspired identity.
+9. **Plan before you build.** Every phase or non-trivial feature gets a written implementation plan in `docs/plans/<branch-slug>.md` (e.g. `docs/plans/phase-3-card-lab.md`) **before any code is written**. The plan must cover: goal in one sentence, mapping of requirements to specific files/functions, full test plan, design decisions with trade-offs, and open questions. The plan is committed in the same PR as the implementation. Existing plans in `docs/plans/` are the reference for how detailed to go.
 
 ## How to run things
 
@@ -82,7 +83,7 @@ This repo runs multiple background agents in parallel. To avoid stepping on each
 
 When the user spawns a background agent, the prompt should explicitly include:
 
-> Work on branch `<branch-name>`. When all "Definition of Done" criteria from the matching phase in `docs/PLAN.md` are met, push the branch and stop. Do NOT merge unless I tell you to.
+> Work on branch `<branch-name>`. **First, write the implementation plan to `docs/plans/<branch-name>.md` and wait for approval.** Then execute. When all "Definition of Done" criteria from the matching phase in `docs/PLAN.md` are met, push the branch and stop. Do NOT merge unless I tell you to.
 
 ### How to self-review before merging
 
@@ -99,7 +100,7 @@ Before squash-merging into `main`, the agent must:
 
 See `docs/PLAN.md`. Each phase has a goal, must-include list, out-of-scope list, definition of done, branch name, token budget, and model recommendation.
 
-We are currently between **Phase 1 (Scaffold, done)** and **Phase 2 (Engine, next)**.
+Phase 1 (Scaffold) and Phase 2 (Engine) are done. **Phase 3 (Card Lab) is next.**
 
 ## When you're unsure
 
@@ -108,6 +109,7 @@ Read the relevant doc:
 - Game rules question → `docs/GAME_LOGIC.md`
 - DB / edge function question → `docs/SCHEMA.md`
 - "Should I build it this way?" → `docs/PLAN.md` "Decisions Made"
+- "How did we build the last phase?" → the matching file in `docs/plans/`
 - Engine boundaries → `.cursor/rules/engine.mdc`
 
 If the doc doesn't answer it, propose a decision in `docs/PLAN.md` under "Proposed Decisions" with the trade-offs, and ask the user.
