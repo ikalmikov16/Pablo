@@ -9,6 +9,13 @@ import tseslint from 'typescript-eslint';
 import prettierConfig from 'eslint-config-prettier';
 
 export default [
+  // CommonJS config files (babel.config.js, etc.) need `module` in scope.
+  {
+    files: ['**/*.config.js', '**/*.config.cjs'],
+    languageOptions: {
+      globals: { module: 'writable', require: 'readonly', __dirname: 'readonly' },
+    },
+  },
   {
     ignores: [
       'node_modules/**',

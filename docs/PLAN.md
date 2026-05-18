@@ -4,7 +4,7 @@ Living plan. Agents MUST update this after meaningful changes — move items bet
 
 ## Current phase
 
-**Phase 2 — Engine** ✅ complete. Next up: Phase 3 (Card Lab) or Phase 5 (Supabase) in parallel.
+**Phase 3 — Card Lab** ✅ complete. Next up: Phase 4 (single-player vs bot) or Phase 5 (Supabase) in parallel.
 
 ---
 
@@ -39,18 +39,28 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
   - `pendingPower` field tracks power-pending sub-turns.
   - `reshuffleCount` enables deterministic reshuffle sub-seeds.
   - 111 tests, 0 failures, 98.99% line coverage.
-  - `bun --cwd packages/engine run typecheck` — 0 errors.
+  - `bun --cwd=packages/engine run typecheck` — 0 errors.
   - Implementation plan saved to `docs/PHASE2_PLAN.md`.
+- ✅ **Phase 3 — Card Lab** (`phase-3-card-lab` branch, PR open).
+  - Expo Router 6 wired up (SDK-54-compatible); entry point swapped to `expo-router/entry`.
+  - `<PlayingCard>` in `apps/mobile/src/components/cards/PlayingCard.tsx`: Skia Canvas for back/face surfaces, Reanimated 4 `rotateY` flip (withTiming, 450 ms), pan-to-snap (withSpring), `Gesture.Race` for tap/pan.
+  - Two themes: `classic-light` (existing) + `midnight` (new dark/gold); `nextTheme()` utility cycles the registry.
+  - Design tokens at `apps/mobile/src/design/tokens.ts`; all app chrome reads from tokens.
+  - Minimal `t()` i18n wrapper at `apps/mobile/src/i18n/` (same call signature as the future full implementation).
+  - Dev-only lab screen at `apps/mobile/app/dev/card-lab.tsx` with interactive card + variants grid.
+  - `__DEV__`-gated entry link on the home screen.
+  - 152 tests, 0 failures (`bun run check` clean).
+  - Implementation plan at `docs/plans/phase-3-card-lab.md`.
 
 ## In progress
 
-- (none)
+- (none — Phase 3 PR open, awaiting merge approval)
 
 ---
 
 ## Up next
 
-### Phase 3 — Card UI prototype (de-risk Skia + Reanimated)
+### ✅ Phase 3 — Card UI prototype (de-risk Skia + Reanimated) — DONE, PR open
 
 **Branch**: `phase-3-card-lab` · **Token budget**: $ (short foreground) · **Model**: claude-4.6-sonnet
 
@@ -106,7 +116,7 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
 **Definition of Done**
 
 - You can install on a real iPhone, play a full match against 2 bots, and the game ends cleanly with a winner.
-- `bun --cwd apps/mobile run typecheck` clean.
+- `bun --cwd=apps/mobile run typecheck` clean.
 - PR opened titled `phase 4: single-player vs bot`.
 
 ---
@@ -231,6 +241,14 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
 | 2026-05-17 | `MatchState` separated from `GameState` in engine                                                                | Engine cleanly separates "single round" from "multi-round match to score cap"; avoids baking the wrong assumption into Phase 2                                                             |
 | 2026-05-17 | Each phase = its own branch + PR (no direct commits to main)                                                     | Required to safely parallelize background agents; Bugbot reviews each PR                                                                                                                   |
 | 2026-05-17 | iOS-first; web supported as a side-effect, not a polish target                                                   | Don't break web, don't optimize for it                                                                                                                                                     |
+| 2026-05-17 | Add Expo Router in Phase 3 (not Phase 4)                                                                         | PLAN.md prescribes the route at `apps/mobile/app/dev/card-lab.tsx`; Phase 4 needs it anyway; adding it now avoids a double-migration                                                       |
+| 2026-05-17 | Design tokens live in `apps/mobile/src/design/tokens.ts`, not a shared `packages/ui`                             | One consumer today; hoisting to a package adds workspace complexity for zero gain; mechanical import-path migration when/if a web app arrives                                              |
+| 2026-05-17 | Flip uses `withTiming` (not `withSpring`) for `rotateY`                                                          | Springs can overshoot past 90° and re-trigger the face-swap crossover with the wrong face dominant; timing gives a clean arc with no flicker at the half-turn                              |
+| 2026-05-17 | `Gesture.Race(pan, tap)` — tap wins under 250 ms, pan wins above drag threshold                                  | Prevents quick taps from accidentally starting a drag, and drags from firing a tap                                                                                                         |
+| 2026-05-17 | Skia Canvas for back + front surface background; RN Text overlay for rank/suit labels                            | Avoids font-file loading complexity in the prototype; Skia still owns the card surface (background, border, decorative pattern) — label rendering via Skia Text is a Phase 7 polish item   |
+| 2026-05-17 | Second theme is `midnight` (dark surface, gold accents)                                                          | Maximum visual delta vs `classic-light`; exercises every palette slot without committing to the eventual zellige motif (Phase 7)                                                           |
+| 2026-05-17 | In-app Variants grid instead of Storybook                                                                        | Storybook-RN is a substantial dep + separate runner; the grid in the lab screen covers 16 permutations (4 cards × 2 themes × face-up/down) at near-zero cost                               |
+| 2026-05-17 | Minimal `t()` wrapper in Phase 3 (no `expo-localization`)                                                        | AGENTS.md hard rule #7 is unconditional even for dev screens; the 15-line wrapper shares the same call signature as the full Phase 4 implementation, so no component changes are needed    |
 
 ## Proposed decisions (need user input)
 

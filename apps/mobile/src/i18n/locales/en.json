@@ -1,0 +1,15 @@
+{
+  "dev": {
+    "home": {
+      "title": "Pablo",
+      "subtitle": "Phase 3 — Card Lab prototype"
+    },
+    "cardLab": {
+      "title": "Card Lab",
+      "tapToFlip": "Tap to flip · Drag to move",
+      "themeButton": "Theme: {{name}}",
+      "variantsTitle": "Variants",
+      "openButton": "Open Card Lab"
+    }
+  }
+}

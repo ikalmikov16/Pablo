@@ -80,5 +80,43 @@ export const defaultCardTheme: CardTheme = {
   },
 };
 
+/**
+ * Midnight theme — dark surface, gold accents.
+ * Maximum visual delta vs classic-light; exercises every palette slot.
+ */
+export const midnightCardTheme: CardTheme = {
+  id: 'midnight',
+  name: 'Midnight',
+  back: {
+    pattern: 'plain',
+    palette: {
+      primary: '#1A1033',
+      secondary: '#2E1F5E',
+      accent: '#C9A84C',
+    },
+  },
+  face: {
+    suitGlyphs: 'minimal',
+    cornerLayout: 'spacious',
+    palette: {
+      bg: '#12102A',
+      red: '#E05A5A',
+      black: '#D4C8FF',
+      border: '#2E1F5E',
+    },
+  },
+  border: {
+    width: 1,
+    radius: 12,
+    color: '#C9A84C',
+  },
+};
+
 /** All themes the app knows about. New themes: add here, no component changes. */
-export const cardThemes: ReadonlyArray<CardTheme> = [defaultCardTheme];
+export const cardThemes: ReadonlyArray<CardTheme> = [defaultCardTheme, midnightCardTheme];
+
+/** Cycle to the next theme in the registry. */
+export function nextTheme(current: CardTheme): CardTheme {
+  const idx = cardThemes.findIndex((t) => t.id === current.id);
+  return cardThemes[(idx + 1) % cardThemes.length]!;
+}

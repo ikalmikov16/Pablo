@@ -46,8 +46,21 @@ bun run format              # Prettier --write the whole repo
 bun run format:check        # verify Prettier would not change anything
 bun run check               # typecheck + lint + format:check + test (the canonical pre-commit gate)
 bun run mobile              # start Expo dev server (apps/mobile)
+bun run mobile:ios          # start Expo dev server + launch iOS Simulator
+bun run mobile:web          # start Expo dev server in browser-only mode
 bun run supabase:start      # local Supabase stack (requires Docker Desktop)
 bun run supabase:functions  # serve edge functions locally
+```
+
+Note: cross-workspace bun invocations must use `--cwd=<path>` (with the equals sign — `bun --cwd <path>` is silently broken on Bun 1.3.14).
+
+```bash
+# ✅ works
+bun --cwd=packages/engine run typecheck
+bun --filter='@pablo/mobile' run typecheck
+
+# ❌ broken — prints help instead of running
+bun --cwd packages/engine run typecheck
 ```
 
 ## After making changes
@@ -62,7 +75,7 @@ Every meaningful change must, in order:
 6. Update `docs/GAME_LOGIC.md` if you changed any rule semantics.
 7. Update `docs/SCHEMA.md` if you changed any Supabase table, RLS policy, or edge function contract.
 
-The single command `bun run check` runs steps 1–4 (format-check + lint + typecheck + tests). Run it before opening any PR. CI / Bugbot will run the same command — agents that open a PR without first running `bun run check` will get sent back.
+The single command `bun run check` runs steps 1–4 (format-check + lint + typecheck + tests). Run it before pushing any branch.
 
 ### Lint / formatter setup (read once)
 
@@ -75,11 +88,12 @@ The single command `bun run check` runs steps 1–4 (format-check + lint + typec
 This repo runs multiple background agents in parallel. To avoid stepping on each other:
 
 1. **Every phase gets its own branch.** Naming: `phase-N-short-slug` (e.g. `phase-2-engine`, `phase-5-supabase`). See `docs/PLAN.md` for the canonical branch name per phase.
-2. **Never commit directly to `main`.** Always work on a phase branch and merge via PR (or squash-merge via the agent if instructed).
-3. **Agent self-reviews before merging.** No Bugbot. The agent that produced the change is responsible for one critical pass over the diff: re-reading every changed file, sanity-checking edge cases, and verifying every "After making changes" gate before merging.
-4. **Squash-merge** to keep `main` linear and readable.
-5. **Last step before merging**: update `docs/PLAN.md` — move items between Done / In Progress / Up Next, append to "Decisions Made". A merge without a PLAN.md update is incomplete.
-6. **Default is do-not-merge.** When the user spawns a background agent, the agent opens the PR (or pushes the branch) and stops. The user explicitly says "merge" before the agent squash-merges into `main`.
+2. **Never commit directly to `main`.** Always work on a phase branch and squash-merge into `main` when the user says "merge".
+3. **No GitHub PRs.** Do not open pull requests. Push the branch, then stop. The merge happens locally via `git merge --squash` when the user approves.
+4. **Agent self-reviews before merging.** The agent that produced the change is responsible for one critical pass over the diff: re-reading every changed file, sanity-checking edge cases, and verifying every "After making changes" gate before merging.
+5. **Squash-merge** to keep `main` linear and readable.
+6. **Last step before merging**: update `docs/PLAN.md` — move items between Done / In Progress / Up Next, append to "Decisions Made". A merge without a PLAN.md update is incomplete.
+7. **Default is do-not-merge.** When the user spawns a background agent, the agent pushes the branch and stops. The user explicitly says "merge" before the agent squash-merges into `main`.
 
 When the user spawns a background agent, the prompt should explicitly include:
 
