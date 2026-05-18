@@ -12,3 +12,5 @@ bun.lockb
 .git
 supabase/.branches
 supabase/.temp
+# Generated engine bundle for Deno edge functions
+supabase/functions/_shared/engine.bundle.js

@@ -50,6 +50,10 @@ bun run mobile:ios          # start Expo dev server + launch iOS Simulator
 bun run mobile:web          # start Expo dev server in browser-only mode
 bun run supabase:start      # local Supabase stack (requires Docker Desktop)
 bun run supabase:functions  # serve edge functions locally
+bun run build:engine-bundle # rebuild supabase/functions/_shared/engine.bundle.js
+                            # — REQUIRED whenever packages/engine source changes,
+                            # since the bundle is what Deno edge functions import.
+                            # Forgetting this means edge functions run a stale engine.
 ```
 
 Note: cross-workspace bun invocations must use `--cwd=<path>` (with the equals sign — `bun --cwd <path>` is silently broken on Bun 1.3.14).

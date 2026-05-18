@@ -1,0 +1,9 @@
+{
+  "name": "@pablo/tests",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": {
+    "@pablo/engine": "workspace:*",
+    "@supabase/supabase-js": "^2.0.0"
+  }
+}

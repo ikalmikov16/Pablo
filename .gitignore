@@ -30,6 +30,10 @@ android/.gradle/
 supabase/.branches/
 supabase/.temp/
 supabase/.env
+supabase/functions/.env
+
+# Mobile env (real values, never committed)
+apps/mobile/.env.local
 
 # Editors / OS
 .DS_Store

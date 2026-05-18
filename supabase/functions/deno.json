@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@pablo/engine": "./_shared/engine.bundle.js"
+  },
+  "lint": { "rules": { "tags": ["recommended"] } }
+}

@@ -2,134 +2,209 @@
 
 How the Supabase side fits together. The Phase 5 agent implements this; the engine team can read it for context. The mobile app (`apps/mobile`) consumes the backend through the `PabloClient` interface — see the "PabloClient contract" section at the bottom for what Phase 5 must expose.
 
+Last revised: 2026-05-18 (Phase 5 plan — Phase 2.5 sweep, leak fixes, idempotency model, broadcast realtime).
+
 ## Philosophy
 
 1. **The client subscribes to per-player projections, never raw `games` rows.** This is how we keep hidden cards hidden.
 2. **All state mutations go through edge functions.** No client-side `update` to `games`. RLS denies it.
-3. **Engine is the only place rules live.** Edge functions are thin wrappers: load state, validate move via `applyMove`, write back, broadcast.
-4. **Idempotency keys on every mutation.** Network retries must not duplicate moves.
+3. **Engine is the only place rules live.** Edge functions are thin wrappers: load state, validate move via `applyMove`, write back, broadcast. Postgres functions never re-implement game rules.
+4. **`game_events` and `games.state` are equally privileged.** Both are service-role-only. Anything a client reads goes through an edge function that runs `auth.uid()`-aware redaction.
+5. **Idempotency keys on every mutation that takes one.** Network retries must not duplicate moves; the move log is the source of truth.
+6. **Server-controlled randomness.** Seeds for `engine.newGame` are minted server-side; clients never inject them.
 
 ## Tables
 
 ### `profiles`
 
-| Column         | Type          | Notes                         |
-| -------------- | ------------- | ----------------------------- |
-| `id`           | `uuid` PK     | references `auth.users.id`    |
-| `display_name` | `text`        | nullable until user picks one |
-| `created_at`   | `timestamptz` | default `now()`               |
+| Column         | Type          | Notes                                          |
+| -------------- | ------------- | ---------------------------------------------- |
+| `id`           | `uuid` PK     | references `auth.users.id` `ON DELETE CASCADE` |
+| `display_name` | `text`        | nullable until user picks one                  |
+| `created_at`   | `timestamptz` | default `now()`                                |
 
-RLS: users can read all profiles; users can only update their own.
+- **Trigger**: `AFTER INSERT ON auth.users` → insert empty `profiles` row, so anonymous sign-ins auto-provision.
+- **RLS**: any authenticated user can `SELECT`; users can only `UPDATE` their own row; no client-side `INSERT` or `DELETE`.
 
 ### `rooms`
 
 Lobby metadata. Lightweight, fully public read.
 
-| Column        | Type          | Notes                                  |
-| ------------- | ------------- | -------------------------------------- |
-| `id`          | `uuid` PK     |                                        |
-| `code`        | `text` UNIQUE | 6-char join code                       |
-| `host_id`     | `uuid`        | references `profiles.id`               |
-| `status`      | `text`        | `'waiting' \| 'playing' \| 'finished'` |
-| `rules`       | `jsonb`       | a `GameRules` object                   |
-| `max_players` | `int`         | default 4                              |
-| `created_at`  | `timestamptz` |                                        |
+| Column        | Type          | Notes                                                            |
+| ------------- | ------------- | ---------------------------------------------------------------- |
+| `id`          | `uuid` PK     | default `gen_random_uuid()`                                      |
+| `code`        | `text` UNIQUE | 6-char base32-no-ambiguous join code (no `O`, `0`, `I`, `1`)     |
+| `host_id`     | `uuid`        | references `profiles.id`                                         |
+| `status`      | `text`        | `CHECK (status IN ('waiting','playing'))` — see "Room lifecycle" |
+| `rules`       | `jsonb`       | a `GameRules` object (template for new games)                    |
+| `max_players` | `int`         | `CHECK (max_players BETWEEN 2 AND 6)`; default 4                 |
+| `created_at`  | `timestamptz` | default `now()`                                                  |
 
-RLS: anyone can read rooms (so people can join by code). Only the host can update.
+- **RLS**: any authenticated user can `SELECT` (so people can join by code); only `host_id = auth.uid()` can `UPDATE`; `INSERT` only via the `create_room()` SQL function (SECURITY DEFINER); `DELETE` only via `leaveRoom` edge function when the last member leaves.
+
+> **Room lifecycle.** A room is `waiting` until the host calls `startGame`, then `playing` until the live game ends. After a game ends, the host can call `startGame` again (creates a fresh `games` row in `peek_phase`) or `leaveRoom` (which deletes the empty room). There is no `'finished'` terminal status — dead rooms are deleted.
 
 ### `room_members`
 
-| Column      | Type               | Notes                    |
-| ----------- | ------------------ | ------------------------ |
-| `room_id`   | `uuid`             | references `rooms.id`    |
-| `user_id`   | `uuid`             | references `profiles.id` |
-| `seat`      | `int`              | 0..max_players-1         |
-| `joined_at` | `timestamptz`      |                          |
-| PK          | (room_id, user_id) |                          |
+| Column      | Type               | Notes                                                                |
+| ----------- | ------------------ | -------------------------------------------------------------------- |
+| `room_id`   | `uuid`             | references `rooms.id` `ON DELETE CASCADE`                            |
+| `user_id`   | `uuid`             | references `profiles.id` `ON DELETE CASCADE`                         |
+| `seat`      | `int`              | `CHECK (seat >= 0)`; uniqueness enforced by `(room_id, seat) UNIQUE` |
+| `joined_at` | `timestamptz`      | default `now()`                                                      |
+| PK          | (room_id, user_id) |                                                                      |
 
-RLS: members of a room can read the membership list; insert only via `joinRoom` edge function.
+- **Indices**: `(room_id, seat) UNIQUE` (prevents two members in the same seat — turn-order safety); `(user_id)` (for "what rooms am I in?").
+- **RLS**: members of a room can `SELECT` the membership list. The check is implemented via the `is_room_member(p_room_id, p_user_id)` SECURITY DEFINER helper function (declared in the same migration) — a naive `EXISTS (SELECT 1 FROM room_members ...)` policy would recurse into itself and fail with `infinite recursion detected in policy for relation "room_members"`. `INSERT`/`DELETE` only via `joinRoom`/`leaveRoom` edge functions.
 
 ### `games`
 
-The full authoritative state. **Restricted.** Clients never read this directly.
+The full authoritative state. **Restricted to `service_role`.** Clients never read this directly.
 
-| Column       | Type          | Notes                                                                |
-| ------------ | ------------- | -------------------------------------------------------------------- |
-| `id`         | `uuid` PK     |                                                                      |
-| `room_id`    | `uuid`        | references `rooms.id`                                                |
-| `state`      | `jsonb`       | full `GameState` blob (engine type)                                  |
-| `version`    | `bigint`      | monotonic, bumped on every mutation; used for optimistic concurrency |
-| `updated_at` | `timestamptz` |                                                                      |
+| Column           | Type          | Notes                                                                  |
+| ---------------- | ------------- | ---------------------------------------------------------------------- |
+| `id`             | `uuid` PK     | default `gen_random_uuid()`                                            |
+| `room_id`        | `uuid`        | references `rooms.id` `ON DELETE CASCADE`                              |
+| `state`          | `jsonb`       | full `GameState` blob (engine type, opaque to Postgres)                |
+| `version`        | `bigint`      | starts at 0, bumped on every successful `applyMove`                    |
+| `engine_version` | `int`         | starts at 1; bump in lockstep with a breaking `GameState` shape change |
+| `created_at`     | `timestamptz` | default `now()`                                                        |
+| `updated_at`     | `timestamptz` | bumped by `apply_move_atomic`                                          |
 
-RLS: deny all client reads and writes. Only `service_role` (edge functions) can touch.
+- **Index**: `games_one_live_per_room` partial unique on `(room_id) WHERE (state->>'status') <> 'ended'` — prevents two simultaneously-live games per room.
+- **Index**: `(room_id)` for `getCurrentGame(room_id)` lookups.
+- **RLS**: `DENY ALL` for `authenticated`. Only `service_role` (edge functions) and SECURITY DEFINER functions touch this table.
 
-### `game_views` (Postgres view, NOT a table)
+### `game_moves`
 
-A `SECURITY DEFINER` Postgres function `get_player_view(game_id uuid)` that:
+Append-only log of every move applied to a game. **Service-role-only.** Carries the idempotency key.
 
-1. Loads the `games.state`
-2. Verifies `auth.uid()` is a member of the corresponding room
-3. Returns the projection for that player (hides other players' hidden card values, hides deck order)
+| Column            | Type                       | Notes                                          |
+| ----------------- | -------------------------- | ---------------------------------------------- |
+| `game_id`         | `uuid`                     | references `games.id` `ON DELETE CASCADE`      |
+| `version`         | `bigint`                   | equals `games.version` after this move applied |
+| `player_id`       | `uuid`                     | references `profiles.id`                       |
+| `move`            | `jsonb`                    | engine `Move` variant                          |
+| `idempotency_key` | `text`                     | client-supplied UUID per attempt               |
+| `created_at`      | `timestamptz`              | default `now()`                                |
+| PK                | (game_id, version)         |                                                |
+| UNIQUE            | (game_id, idempotency_key) | enforces idempotency at write time             |
 
-Clients call `supabase.rpc('get_player_view', { game_id })` and subscribe to `games` row changes for that game (broadcast-only, no payload), then re-fetch the projection on change.
+- **RLS**: `DENY ALL`. Clients never read or write directly.
+- **Why a separate table?** Idempotency needs a UNIQUE constraint. One move can produce many events; making `(game_id, version)` carry the key on `game_events` would require choosing "which row" and tracking it. A 1:1 moves table is cheaper and supports clean replay/audit later.
 
 ### `game_events`
 
-Append-only event log. Useful for replays, audit, and animation timing on the client.
+Append-only event log. Drives client-side animation timing. **Service-role-only.**
 
-| Column       | Type           | Notes                                       |
-| ------------ | -------------- | ------------------------------------------- |
-| `id`         | `bigserial` PK |                                             |
-| `game_id`    | `uuid`         | references `games.id`                       |
-| `version`    | `bigint`       | matches the `games.version` after the event |
-| `event`      | `jsonb`        | a `GameEvent` from the engine               |
-| `created_at` | `timestamptz`  |                                             |
+| Column       | Type           | Notes                                                                    |
+| ------------ | -------------- | ------------------------------------------------------------------------ |
+| `id`         | `bigserial` PK |                                                                          |
+| `game_id`    | `uuid`         | references `games.id` `ON DELETE CASCADE`                                |
+| `version`    | `bigint`       | matches `games.version` after the move that produced this event          |
+| `seq`        | `int`          | ordering within a version (one move can emit multiple events, 0-indexed) |
+| `event`      | `jsonb`        | a `GameEvent` from the engine (raw — may contain private `cardId`s)      |
+| `created_at` | `timestamptz`  | default `now()`                                                          |
 
-RLS: room members can read events for games in their room (but events are pre-projected, so they only contain info that player is allowed to see).
+- **Index**: `(game_id, version, seq) UNIQUE` (uniqueness + the natural read order).
+- **Index**: `(game_id, version)` for `getEventsSince(game_id, since_version)` range scans.
+- **RLS**: `DENY ALL`. Clients fetch via the `getEventsSince` edge function which performs per-player redaction (see "Hidden-info contract" below).
 
-## Edge Functions
+> **Why deny-all on `game_events`?** Several engine events carry private data, most notably `peeked { cardId }`. If the row were readable by all room members, anyone could `SELECT event->>'cardId' FROM game_events WHERE event->>'type' = 'peeked'` and bypass the projection. Treating events the same as state — service-role-only, redact at read — closes the leak.
 
-All live in `supabase/functions/`. All written in TypeScript, run on Deno. All import the engine via a deno-compatible bundle or direct `.ts` imports.
+## SQL functions
 
-| Function    | Purpose                   | Inputs                                              | Side effects                                                                                                                                                                         |
-| ----------- | ------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `joinRoom`  | Add caller to a room      | `{ roomCode }`                                      | inserts `room_members` row                                                                                                                                                           |
-| `leaveRoom` | Remove caller from a room | `{ roomId }`                                        | deletes row; if last member, deletes room                                                                                                                                            |
-| `startGame` | Host starts the game      | `{ roomId }`                                        | calls `engine.newGame`, inserts `games` row in `status='peek_phase'`, updates `rooms.status`                                                                                         |
-| `applyMove` | Submit any move           | `{ gameId, move, idempotencyKey, expectedVersion }` | calls `engine.applyMove`, writes new state, appends to `game_events`. Handles `choose_peek`, the five turn options, power resolution, and `call_pablo` (on- and off-turn) uniformly. |
+All `SECURITY DEFINER`, `SET search_path = public, pg_temp`. None of them implement game rules; they only orchestrate writes.
+
+### `create_room(p_rules jsonb, p_max_players int) RETURNS rooms`
+
+Generates a `code`, retries up to 5x on UNIQUE collision, inserts the room, and inserts the caller into `room_members(seat=0)` — all in one transaction.
+
+### `apply_move_atomic(p_game_id, p_new_state, p_new_version, p_engine_version, p_move, p_events, p_player_id, p_idempotency_key) RETURNS bigint`
+
+Called by the `applyMove` edge function after `engine.applyMove` succeeds. In one transaction:
+
+1. `UPDATE games SET state, version = p_new_version, engine_version, updated_at = now() WHERE id = p_game_id AND version = p_new_version - 1` (optimistic concurrency).
+2. `INSERT INTO game_moves (...) VALUES (...)`.
+3. `INSERT INTO game_events (...) VALUES (...) ...` (one row per event, with `seq` 0..N-1).
+
+Returns `p_new_version` on success. On `(game_id, idempotency_key)` UNIQUE conflict, returns the cached version from the existing `game_moves` row (so retries are safe). On optimistic-concurrency mismatch, raises — the edge function catches and returns `version_mismatch`.
+
+## Edge functions
+
+All live in `supabase/functions/`. All written in TypeScript, run on Deno 2 (`config.toml` already sets `deno_version = 2`). All import the engine via a shared `supabase/functions/deno.json` `imports` map aliasing `@pablo/engine` to `./_shared/engine.bundle.js` — a pre-built ESM bundle of `packages/engine/src/index.ts` produced by `bun run build:engine-bundle`. (We bundle rather than import the engine sources directly because Supabase's Deno edge runtime doesn't reliably resolve extensionless TypeScript imports inside Bun workspace packages.) **The bundle must be regenerated whenever `packages/engine` changes** — `AGENTS.md` calls this out; forgetting it means the edge functions silently run a stale engine.
+
+| Function         | Purpose                                  | Inputs                                              | Side effects / Outputs                                                                                                           |
+| ---------------- | ---------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `joinRoom`       | Add caller to a room                     | `{ code }`                                          | Inserts `room_members`. Rejects if room `status='playing'` or full. Returns `{ room }`.                                          |
+| `leaveRoom`      | Remove caller from a room                | `{ roomId }`                                        | Deletes row; if last member, deletes the room and any of its games. Returns `{}`.                                                |
+| `startGame`      | Host starts the game                     | `{ roomId }`                                        | Calls `engine.newGame`, inserts `games` row in `status='peek_phase'`, sets `rooms.status='playing'`, broadcasts `game:{id}` v=0. |
+| `applyMove`      | Submit any move (all 12 `Move` variants) | `{ gameId, move, idempotencyKey, expectedVersion }` | Loads game, runs `engine.applyMove`, calls `apply_move_atomic`, broadcasts `game:{id}` v=new. Returns `{ version }`.             |
+| `getPlayerView`  | Per-player projection (read)             | `{ gameId }`                                        | Loads game, runs `engine.computePlayerView(state, auth.uid())`. Returns `{ view, version }`.                                     |
+| `getEventsSince` | Per-player event catch-up (read)         | `{ gameId, sinceVersion }`                          | Loads events, redacts per `auth.uid()` (see below). Returns `{ events, currentVersion }`.                                        |
 
 > Phase 2.5 collapsed `callPablo` into `applyMove`. `call_pablo` is just one of `Move`'s variants — no separate endpoint.
 
 All functions:
 
-- Verify `auth.uid()` is allowed to perform the action
-- Use `expectedVersion` for optimistic concurrency — reject stale moves
-- Use `idempotencyKey` (UUID per move attempt) for retry safety
-- Return either `{ ok: true, version }` or `{ ok: false, error }`
+- Verify `auth.uid()` is allowed to perform the action (caller is a member of the room / is the host / is the player named in the move / etc.).
+- For mutations: use `expectedVersion` for optimistic concurrency — reject stale moves with `version_mismatch`.
+- For mutations: use `idempotencyKey` (UUID per attempt) — duplicate POSTs return the cached version.
+- Return JSON shaped to match the mobile `ClientResult<T>`: `{ ok: true, data }` or `{ ok: false, error }` where `error` is a `ClientErrorCode`.
+- HTTP status is always 200 unless the request is malformed (then 400) or unauthenticated (then 401); the discriminator is in the body.
 
 ## Realtime
 
-Two parallel streams per game, both filtered by `game_id`:
+### View stream — broadcast (not postgres_changes)
 
-1. **View stream** — clients subscribe to Postgres changes on `games` for their `game_id`. The payload is blocked by RLS; the change is just a "state changed" tick. On every tick the client calls `get_player_view(game_id)` and emits the new `(view, version)` pair to the in-app `PabloClient.subscribePlayerView` callback. (`version` comes from the `games.version` column.)
-2. **Event stream** — clients subscribe to `INSERT`s on `game_events` for their `game_id`, batching all rows whose `version > lastSeenVersion`. Each batch is emitted to `PabloClient.subscribeGameEvents`. Events drive the animation layer; the view stream remains the source of truth for state.
+After every successful `applyMove`, the edge function publishes a Realtime **broadcast** message on channel `game:{gameId}` with payload `{ version: number }`. Clients:
+
+1. Subscribe to `game:{gameId}` on game enter.
+2. On every tick, call `getPlayerView({ gameId })` and emit the new `(view, version)` pair to `PabloClient.subscribePlayerView`.
+
+**Why broadcast, not `postgres_changes` on `games`:** `postgres_changes` respects RLS. `games` is service-role deny-all for clients, so `postgres_changes` would deliver nothing. Broadcast bypasses RLS for the publisher (service role) and delivers to channel subscribers. No leak — payload is just the version.
+
+### Event stream — same channel, batched fetch
+
+Events ride the same `game:{gameId}` channel. Each broadcast tick prompts a `getEventsSince(gameId, lastSeenVersion)` call, which delivers all rows with `version > lastSeenVersion` in version+seq ascending order. Each batch is emitted to `PabloClient.subscribeGameEvents`. Events drive the animation layer; the view stream remains the source of truth for state.
+
+### Room subscriptions — postgres_changes (safe)
+
+`rooms` and `room_members` are RLS-readable by room members, so the mobile app can subscribe directly to `postgres_changes` filtered by `room_id`. No edge function in the path.
 
 This pattern is simple and cheat-proof: clients never see hidden data, and the two streams arrive in the order moves were applied (version-monotonic).
 
+## Hidden-info contract
+
+`getPlayerView` is the projection edge function. It loads `games.state`, validates `auth.uid()` is a room member, and runs `engine.computePlayerView(state, auth.uid())` directly. Same hidden/visible split as documented in `docs/GAME_LOGIC.md` § Hidden-info contract — no rule duplication.
+
+`getEventsSince` performs **per-player redaction**:
+
+| Event type   | Redaction (when caller ≠ `playerId`)                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------- |
+| `peeked`     | Replace `cardId` with `null`. Caller learns "alice peeked bob's slot 2" but not what card it was. |
+| `card_drawn` | No redaction needed (no `cardId` in payload).                                                     |
+| All others   | No redaction — all other event payloads are public-safe (peek_chosen carries no indices, etc.).   |
+
+The redaction table is encoded as a tiny pure function in `supabase/functions/_shared/redact.ts` so it can be unit-tested alongside the engine.
+
 ## Migration conventions
 
-- Filename: `YYYYMMDDHHMMSS_short_description.sql`
-- Every migration includes its rollback as comments at the bottom (we don't run them automatically; useful for review)
-- RLS is enabled in the same migration that creates the table — never separated
+- Filename: `YYYYMMDDHHMMSS_short_description.sql` (use `supabase migration new`).
+- Every migration includes its rollback as comments at the bottom (we don't run them automatically; useful for review).
+- RLS is enabled in the same migration that creates the table — never separated.
+- Never edit a migration after it's been applied to a shared environment. Add a new one instead.
 
 ## Local dev
 
 ```bash
-supabase start            # boot Postgres + Realtime + Auth locally (requires Docker)
-supabase db reset         # wipe + reapply migrations + seed
-supabase functions serve  # serve edge functions for local testing
-supabase status           # show local connection details
+bun run supabase:start          # boots Postgres + Realtime + Auth locally (requires Docker Desktop)
+supabase db reset               # wipe + reapply migrations + seed
+bun run supabase:functions      # serve edge functions for local testing
+supabase status                 # show local connection details + keys
 ```
+
+After `supabase start`, copy the printed `anon key` to `apps/mobile/.env.local` and the `service_role key` to `supabase/functions/.env`. See `apps/mobile/.env.example` and `supabase/functions/.env.example` for the exact variable names.
 
 ## PabloClient contract (what the mobile app expects)
 
@@ -167,17 +242,17 @@ type ClientResult<T> = { ok: true; data: T } | { ok: false; error: ClientErrorCo
 
 Mapping to this schema:
 
-| `PabloClient` method  | Supabase implementation                                                                                                   |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `signIn`              | `supabase.auth.signInAnonymously()`; resolves to the anon user id.                                                        |
-| `createRoom`          | RPC into a `create_room` SQL function (so RLS is enforced + atomic).                                                      |
-| `joinRoom`            | Edge function `joinRoom` (checks code, inserts `room_members`).                                                           |
-| `leaveRoom`           | Edge function `leaveRoom`.                                                                                                |
-| `startGame`           | Edge function `startGame` (host only).                                                                                    |
-| `applyMove`           | Edge function `applyMove` (idempotency + expectedVersion required).                                                       |
-| `subscribeRoom`       | Postgres-changes subscription on `rooms` + `room_members` filtered by `room_id`.                                          |
-| `subscribePlayerView` | View stream above. Callback receives the new projection and `games.version`.                                              |
-| `subscribeGameEvents` | Event stream above. Callback receives one or more `game_events` rows since the last delivery, in version-ascending order. |
+| `PabloClient` method  | Supabase implementation                                                                                                             |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `signIn`              | `supabase.auth.signInAnonymously()`; resolves to the anon user id. The `auth.users` insert trigger auto-creates the `profiles` row. |
+| `createRoom`          | RPC into the `create_room` SQL function (atomic room + first member insert).                                                        |
+| `joinRoom`            | Edge function `joinRoom`.                                                                                                           |
+| `leaveRoom`           | Edge function `leaveRoom`.                                                                                                          |
+| `startGame`           | Edge function `startGame` (host only).                                                                                              |
+| `applyMove`           | Edge function `applyMove` (idempotency + expectedVersion required).                                                                 |
+| `subscribeRoom`       | `postgres_changes` subscription on `rooms` and `room_members` filtered by `room_id`.                                                |
+| `subscribePlayerView` | View stream: subscribe to broadcast `game:{gameId}`, fetch `getPlayerView` on tick. Callback receives `(view, version)`.            |
+| `subscribeGameEvents` | Event stream: same channel, on tick call `getEventsSince(lastSeenVersion)`. Callback receives batched events in version+seq order.  |
 
 ### `ClientErrorCode`
 
@@ -188,5 +263,28 @@ Mapping to this schema:
 
 ### Idempotency + versioning
 
-- Every `applyMove` call carries a unique `idempotencyKey` (UUID per attempt, retried with the same key). The mock client caches successful results by key; the real client persists the (gameId, idempotencyKey) → version mapping so a duplicate POST returns the same version without re-applying.
-- `expectedVersion` is the version the client saw most recently in `subscribePlayerView`. The server compares against `games.version`; mismatch returns `version_mismatch` and the client should resubscribe.
+- Every `applyMove` call carries a unique `idempotencyKey` (UUID per attempt, retried with the same key). The mock client caches successful results by key. The real client relies on `(game_id, idempotency_key) UNIQUE` on `game_moves`: a duplicate POST hits the conflict, the function `SELECT`s the cached version, and returns it without re-applying.
+- `expectedVersion` is the version the client saw most recently in `subscribePlayerView`. The server compares against `games.version`; mismatch returns `version_mismatch` and the client should resubscribe (which triggers a fresh `getPlayerView`).
+
+## Environment variables
+
+Two `.env` files matter for local dev. Examples are committed, real values are gitignored.
+
+### `apps/mobile/.env.local` (mobile client; `EXPO_PUBLIC_*` is inlined into the bundle)
+
+```
+EXPO_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<from `supabase start` output>
+```
+
+The anon key is safe in the client (RLS is the line of defense). Do not put the service role key here.
+
+### `supabase/functions/.env` (edge functions; loaded by `supabase functions serve`)
+
+```
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SERVICE_ROLE_KEY=<from `supabase start` output>
+SUPABASE_ANON_KEY=<from `supabase start` output>
+```
+
+The service role key only ever appears in this file (and in hosted-project secrets once we deploy). It must never appear in `apps/mobile/`.
