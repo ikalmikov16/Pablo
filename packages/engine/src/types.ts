@@ -17,33 +17,33 @@ export type Card = {
   readonly rank: Rank;
 };
 
-/** Stable identity for a card across a game (e.g. "H7", "SK"). */
+/** Stable identity for a card across a game (e.g. "07H", "13S"). */
 export type CardId = string;
 
 export type PlayerId = string;
 
-/** 4 positions in the 2x2 grid: 0,1 top; 2,3 bottom. */
-export type HandIndex = 0 | 1 | 2 | 3;
+/**
+ * Variable-size slot index. Hands can grow and shrink during play, so this is
+ * a plain non-negative integer rather than the fixed `0|1|2|3` literal union
+ * from Phase 2. Callers must validate: index >= 0 && index < hand.length.
+ */
+export type HandIndex = number;
 
-/** A player's hand is a fixed-size array of card ids (initialHandSize positions). */
+/** A player's hand is a variable-length array of card ids. */
 export type Hand = ReadonlyArray<CardId>;
 
-export type GameStatus = 'waiting' | 'playing' | 'final_turns' | 'ended';
+export type GameStatus = 'peek_phase' | 'playing' | 'ended';
 
 /**
- * Powers a card can grant when discarded directly from a deck draw.
- *
- * - 'peek_self'      — secretly look at one of your own cards
- * - 'peek_opponent'  — secretly look at one of any opponent's cards
- * - 'swap_blind'     — swap one of your cards with an opponent's, neither seeing them
- *
- * Add more (e.g. 'swap_sighted') as future variants need them.
+ * Powers a card can grant when discarded directly from a deck draw (move #1).
+ * Powers ONLY activate via move #1. Discarding any other way never triggers them.
  */
 export type SpecialPower = 'peek_self' | 'peek_opponent' | 'swap_blind';
 
 /**
  * Per-card scoring override. Takes precedence over the rank-based value.
  * Example: King of Hearts worth 0 while other kings are worth 10.
+ * Does NOT affect rank matching.
  */
 export type CardValueOverride = {
   readonly suit: Suit;
@@ -52,7 +52,6 @@ export type CardValueOverride = {
 };
 
 export type GameRules = {
-  /** Default value for kings (overridable per-card via `cardValueOverrides`). */
   readonly kingValue: number;
   readonly queenValue: number;
   readonly jackValue: number;
@@ -60,11 +59,12 @@ export type GameRules = {
   readonly cardValueOverrides: ReadonlyArray<CardValueOverride>;
   /** Map of card rank to its special power. Ranks not listed grant no power. */
   readonly powers: Readonly<Partial<Record<Rank, SpecialPower>>>;
-  readonly maxScore: number;
-  readonly pabloPenalty: number;
-  readonly initialHandSize: 4;
-  readonly initialPeekCount: 0 | 1 | 2 | 3 | 4;
-  readonly allowDrawDiscardAndDiscard: boolean;
+  readonly initialHandSize: number;
+  readonly initialPeekCount: number;
+  /** A matching play that would drop a hand below this size fails with a penalty. */
+  readonly minHandSize: number;
+  /** Number of penalty cards issued on a failed matching claim. */
+  readonly penaltyCardOnFail: number;
 };
 
 export const DEFAULT_RULES: GameRules = {
@@ -77,19 +77,22 @@ export const DEFAULT_RULES: GameRules = {
     8: 'peek_opponent',
     9: 'swap_blind',
   },
-  maxScore: 100,
-  pabloPenalty: 10,
   initialHandSize: 4,
   initialPeekCount: 2,
-  allowDrawDiscardAndDiscard: false,
+  minHandSize: 2,
+  penaltyCardOnFail: 1,
 };
 
-/** A card the current player has drawn but not yet placed/discarded. */
+/** A card the current player has drawn from the deck and not yet resolved. */
 export type DrawnCard = {
   readonly playerId: PlayerId;
   readonly cardId: CardId;
-  readonly from: 'deck' | 'discard';
+  readonly from: 'deck';
 };
+
+export type MatchKind = 'drawn' | 'hand' | 'discard';
+
+export type MatchFailReason = 'wrong_rank' | 'min_hand_size';
 
 export type GameState = {
   readonly id: string;
@@ -103,39 +106,61 @@ export type GameState = {
   readonly discard: ReadonlyArray<CardId>;
   readonly players: ReadonlyArray<PlayerId>;
   readonly hands: Readonly<Record<PlayerId, Hand>>;
-  /** Index into `players` whose turn it is. */
+  /** Index into `players` whose turn it is. Unused during peek_phase. */
   readonly turnIndex: number;
-  /** The card mid-turn (drawn but not yet placed). */
+  /** The card mid-turn (drawn from deck, not yet placed). */
   readonly drawn: DrawnCard | null;
   readonly pabloCalledBy: PlayerId | null;
-  /** When Pablo is called, every other player gets one more turn. */
-  readonly finalTurnsRemaining: number;
+  /** Per-player scores; written by finaliseRound at game end. */
   readonly scores: Readonly<Record<PlayerId, number>>;
-  readonly roundNumber: number;
   readonly rules: GameRules;
   /**
    * Per-player knowledge: knownCards[knower][target][handIndex] = cardId.
-   * Tracks every card a player has privately seen (initial peek, 7/8/9 powers).
-   * Updated as moves are applied; lives inside GameState so state is one
-   * serialisable blob and computePlayerView only needs a single argument.
+   * Tracks every card a player has privately seen (choose_peek, 7/8/9 powers).
+   * Keys are plain numbers (HandIndex widened from fixed 0|1|2|3).
+   * Updated as moves are applied; lives inside GameState for serializability.
    */
   readonly knownCards: Readonly<
-    Record<PlayerId, Readonly<Record<PlayerId, Readonly<Partial<Record<HandIndex, CardId>>>>>>
+    Record<PlayerId, Readonly<Record<PlayerId, Readonly<Partial<Record<number, CardId>>>>>>
   >;
   /**
    * Set while a special power is pending resolution (between the discard that
-   * activates the power and the use_power/skip_power move that resolves it).
+   * activates it and the use_power/skip_power move that resolves it).
    */
   readonly pendingPower: Readonly<{ rank: Rank; power: SpecialPower; playerId: PlayerId }> | null;
-  /** How many times the discard pile has been reshuffled into the deck this round. */
+  /** How many times the discard pile has been reshuffled into the deck this game. */
   readonly reshuffleCount: number;
 };
 
 export type Move =
+  | {
+      readonly type: 'choose_peek';
+      readonly playerId: PlayerId;
+      /** Must be exactly rules.initialPeekCount unique in-range indices. */
+      readonly indices: ReadonlyArray<HandIndex>;
+    }
   | { readonly type: 'draw_from_deck'; readonly playerId: PlayerId }
-  | { readonly type: 'draw_from_discard'; readonly playerId: PlayerId }
   | { readonly type: 'swap_drawn'; readonly playerId: PlayerId; readonly handIndex: HandIndex }
   | { readonly type: 'discard_drawn'; readonly playerId: PlayerId }
+  | {
+      /** Move #3: draw-and-match. Must have drawn first. */
+      readonly type: 'match_drawn';
+      readonly playerId: PlayerId;
+      readonly handIndex: HandIndex;
+    }
+  | {
+      /** Move #4: hand-match (no draw, claim two of own slots are same rank). */
+      readonly type: 'match_hand';
+      readonly playerId: PlayerId;
+      readonly handIndexA: HandIndex;
+      readonly handIndexB: HandIndex;
+    }
+  | {
+      /** Move #5: discard-match (no draw, claim one slot matches discard top). */
+      readonly type: 'match_discard';
+      readonly playerId: PlayerId;
+      readonly handIndex: HandIndex;
+    }
   | {
       readonly type: 'use_peek_self';
       readonly playerId: PlayerId;
@@ -155,10 +180,17 @@ export type Move =
       readonly targetHandIndex: HandIndex;
     }
   | { readonly type: 'skip_power'; readonly playerId: PlayerId }
+  /**
+   * Legal for ANY player while pabloCalledBy===null, drawn===null,
+   * pendingPower===null, and status==='playing'.
+   * On-turn: round ends immediately.
+   * Off-turn: sets pabloCalledBy; round ends the moment the turn pointer
+   * next reaches the caller (their turn is skipped).
+   */
   | { readonly type: 'call_pablo'; readonly playerId: PlayerId };
 
 export type GameEvent =
-  | { readonly type: 'card_drawn'; readonly playerId: PlayerId; readonly from: 'deck' | 'discard' }
+  | { readonly type: 'card_drawn'; readonly playerId: PlayerId; readonly from: 'deck' }
   | {
       readonly type: 'card_swapped';
       readonly playerId: PlayerId;
@@ -181,20 +213,39 @@ export type GameEvent =
       readonly targetHandIndex: HandIndex;
     }
   | { readonly type: 'pablo_called'; readonly playerId: PlayerId }
-  | { readonly type: 'final_turns_started'; readonly pabloCalledBy: PlayerId }
   | { readonly type: 'turn_ended'; readonly nextPlayer: PlayerId }
   | { readonly type: 'deck_reshuffled' }
   | {
       readonly type: 'round_ended';
       readonly scores: Readonly<Record<PlayerId, number>>;
-      readonly winner: PlayerId;
+      /** Multi-element when multiple players tie for the lowest hand. */
+      readonly winners: ReadonlyArray<PlayerId>;
     }
   | {
       readonly type: 'power_activated';
       readonly rank: Rank;
       readonly power: SpecialPower;
       readonly playerId: PlayerId;
-    };
+    }
+  /** Emitted when a player completes their initial peek choice. */
+  | { readonly type: 'peek_chosen'; readonly playerId: PlayerId }
+  /** Emitted once when the last player peeks and status flips to 'playing'. */
+  | { readonly type: 'peek_phase_ended' }
+  | {
+      readonly type: 'match_succeeded';
+      readonly playerId: PlayerId;
+      readonly kind: MatchKind;
+      readonly slotIndices: ReadonlyArray<HandIndex>;
+      readonly discardedCardIds: ReadonlyArray<CardId>;
+    }
+  | {
+      readonly type: 'match_failed';
+      readonly playerId: PlayerId;
+      readonly kind: MatchKind;
+      readonly slotIndices: ReadonlyArray<HandIndex>;
+      readonly reason: MatchFailReason;
+    }
+  | { readonly type: 'penalty_card_dealt'; readonly playerId: PlayerId };
 
 export type MoveResult =
   | { readonly ok: true; readonly state: GameState; readonly events: ReadonlyArray<GameEvent> }
@@ -209,25 +260,36 @@ export type MoveError =
   | 'power_not_available'
   | 'power_pending'
   | 'no_power_to_resolve'
-  | 'must_swap_after_discard_draw'
   | 'game_already_ended'
   | 'pablo_already_called'
+  /** call_pablo attempted while drawn !== null or pendingPower !== null. */
+  | 'pablo_blocked'
   | 'discard_empty'
+  | 'not_peek_phase'
+  | 'peek_phase_active'
+  | 'already_peeked'
+  | 'invalid_peek_count'
+  | 'duplicate_indices'
+  | 'invalid_hand_index'
+  | 'same_index'
   | 'unknown_move';
 
 /** What a single player is allowed to see. Computed server-side and sent to clients. */
 export type PlayerView = {
   readonly self: PlayerId;
   readonly status: GameStatus;
-  readonly roundNumber: number;
   readonly deckCount: number;
   readonly discardTopCardId: CardId | null;
   readonly currentPlayerId: PlayerId;
   readonly players: ReadonlyArray<PlayerViewEntry>;
-  /** Card I'm currently holding mid-turn (only present if it's my turn and I've drawn). */
+  /** Card I drew this turn (only set if it's my turn and I've drawn). */
   readonly drawnCardId: CardId | null;
+  readonly drawnFrom: 'deck' | null;
   readonly pabloCalledBy: PlayerId | null;
-  readonly finalTurnsRemaining: number;
+  /** Public info: everyone sees when a power is pending. */
+  readonly pendingPower: GameState['pendingPower'];
+  /** Full 52-card catalog for rendering any revealed card. */
+  readonly catalog: Readonly<Record<CardId, Card>>;
   readonly rules: GameRules;
 };
 
@@ -235,42 +297,13 @@ export type PlayerViewEntry = {
   readonly id: PlayerId;
   readonly handSize: number;
   /** Map of handIndex -> cardId for cards this player is known (to me) to hold. */
-  readonly knownCards: Readonly<Partial<Record<HandIndex, CardId>>>;
+  readonly knownCards: Readonly<Partial<Record<number, CardId>>>;
   readonly score: number;
   readonly isCurrentTurn: boolean;
 };
 
 export type RoundScore = {
   readonly perPlayerHand: Readonly<Record<PlayerId, number>>;
-  readonly perPlayerRound: Readonly<Record<PlayerId, number>>;
-  readonly cumulative: Readonly<Record<PlayerId, number>>;
-  readonly winner: PlayerId;
-  readonly pabloCallerWasLowest: boolean | null;
-};
-
-// -----------------------------------------------------------------------------
-// Match — wraps multiple rounds, tracks cumulative scoring, knows when to end.
-//
-// A `GameState` represents a single round. A `MatchState` represents a series
-// of rounds played to a score cap (`rules.maxScore`). Keep this distinction
-// crisp: the engine deals/applies/scores rounds; the match layer schedules them
-// and decides when the whole thing is over.
-// -----------------------------------------------------------------------------
-
-export type MatchStatus = 'in_progress' | 'between_rounds' | 'ended';
-
-export type MatchState = {
-  readonly id: string;
-  readonly players: ReadonlyArray<PlayerId>;
-  readonly rules: GameRules;
-  /** Seed for the overall match. Each round derives its own seed from this. */
-  readonly seed: string;
-  /** Current round's game state. Null when status === 'between_rounds'. */
-  readonly currentRound: GameState | null;
-  readonly cumulativeScores: Readonly<Record<PlayerId, number>>;
-  /** History of completed rounds (length = roundsCompleted). */
-  readonly roundHistory: ReadonlyArray<RoundScore>;
-  readonly status: MatchStatus;
-  /** Set when status === 'ended'. The player with the LOWEST cumulative score. */
-  readonly winner: PlayerId | null;
+  /** All players tied for the lowest hand value. Multi-element on tie. */
+  readonly winners: ReadonlyArray<PlayerId>;
 };

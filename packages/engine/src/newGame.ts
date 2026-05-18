@@ -1,28 +1,27 @@
-import type { GameRules, GameState, HandIndex, PlayerId } from './types';
+import type { GameRules, GameState, PlayerId } from './types';
 import { DEFAULT_RULES } from './types';
 import { buildCatalog } from './internal/cards';
 import { makeRng, shuffle } from './internal/rng';
-import { emptyKnowledge, setKnowledge } from './internal/knowledge';
+import { emptyKnowledge } from './internal/knowledge';
 
 /**
- * Build the initial state for a new round.
+ * Build the initial state for a new game.
  *
  * - Builds the 52-card catalog.
- * - Shuffles using a seeded PRNG (seed is the caller's responsibility — usually
- *   `${matchSeed}:r${roundNumber}`).
- * - Deals `rules.initialHandSize` cards to each player.
- * - Seeds `knownCards` with the bottom `rules.initialPeekCount` positions per player.
+ * - Shuffles using a seeded PRNG (caller provides the seed).
+ * - Deals rules.initialHandSize cards to each player.
  * - Flips one card from the deck to start the discard pile.
- * - Sets turnIndex=0, status='playing', drawn=null.
- * - Initialises scores to 0 for every player (within-round accumulation only;
- *   cumulative tracking lives in MatchState).
+ * - Status is 'peek_phase': players must each call choose_peek before play
+ *   begins. If initialPeekCount===0, status starts as 'playing' directly.
+ * - knownCards starts completely empty — no auto-peek. Knowledge comes only
+ *   from explicit choose_peek moves and in-game power uses.
+ * - Sets turnIndex=0, drawn=null, pabloCalledBy=null, scores all zero.
  */
 export function newGame(opts: {
   readonly id: string;
   readonly players: ReadonlyArray<PlayerId>;
   readonly seed: string;
   readonly rules?: Partial<GameRules>;
-  readonly roundNumber?: number;
 }): GameState {
   const { id, players, seed } = opts;
 
@@ -54,27 +53,9 @@ export function newGame(opts: {
   if (!firstDiscard) throw new Error('newGame: deck exhausted before discard flip');
   const discard: string[] = [firstDiscard];
 
-  // Seed initial knowledge: each player privately peeks their bottom slots.
-  // Positions are 0-indexed left-to-right, top-to-bottom in the 2×2 grid.
-  // "Bottom two" = positions 2 and 3.
-  const peekSlots: HandIndex[] = [];
-  for (let i = 0; i < rules.initialPeekCount; i++) {
-    // Fill from the bottom: position (initialHandSize - 1 - i)
-    const idx = (rules.initialHandSize - 1 - i) as HandIndex;
-    peekSlots.push(idx);
-  }
+  // knownCards starts empty — no automatic peek of bottom slots.
+  const knownCards = emptyKnowledge(players);
 
-  let knownCards = emptyKnowledge(players);
-  for (const p of players) {
-    for (const slot of peekSlots) {
-      const cardId = hands[p]![slot];
-      if (cardId) {
-        knownCards = setKnowledge(knownCards, p, p, slot, cardId);
-      }
-    }
-  }
-
-  // Build final scores map (all 0).
   const scores: Record<PlayerId, number> = {};
   for (const p of players) {
     scores[p] = 0;
@@ -85,9 +66,12 @@ export function newGame(opts: {
     finalHands[p] = hands[p]!;
   }
 
+  // If initialPeekCount is 0, skip peek_phase entirely.
+  const status = rules.initialPeekCount === 0 ? 'playing' : 'peek_phase';
+
   return {
     id,
-    status: 'playing',
+    status,
     seed,
     cardCatalog: catalog,
     deck,
@@ -97,9 +81,7 @@ export function newGame(opts: {
     turnIndex: 0,
     drawn: null,
     pabloCalledBy: null,
-    finalTurnsRemaining: 0,
     scores,
-    roundNumber: opts.roundNumber ?? 1,
     rules,
     knownCards,
     pendingPower: null,

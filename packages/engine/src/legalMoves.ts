@@ -1,38 +1,71 @@
-import type { GameState, HandIndex, Move, PlayerId } from './types';
+import type { GameState, Move, PlayerId } from './types';
 
 /**
  * Return the list of legal moves for `playerId` in the current state.
  *
  * Used by the UI to enable/disable controls and by bot opponents.
- * Returns an empty array if it is not this player's turn, or if the game
- * has ended.
+ *
+ * Key changes from Phase 2:
+ *  - Handles peek_phase (choose_peek enumerations).
+ *  - Off-turn call_pablo: any non-current player in a 'playing' idle state
+ *    may call Pablo while pabloCalledBy===null, drawn===null,
+ *    and pendingPower===null.
+ *  - Hand sizes are read from state (variable, not fixed 4).
+ *  - No draw_from_discard.
+ *  - New move types: match_drawn, match_hand, match_discard.
  */
 export function legalMoves(state: GameState, playerId: PlayerId): ReadonlyArray<Move> {
   if (state.status === 'ended') return [];
-  if (state.players[state.turnIndex] !== playerId) return [];
 
-  const moves: Move[] = [];
-  const handSize = state.rules.initialHandSize;
+  // ------------------------------------------------------------------
+  // Peek phase: choose_peek for players who haven't peeked yet.
+  // ------------------------------------------------------------------
+  if (state.status === 'peek_phase') {
+    if (!state.players.includes(playerId)) return [];
+    const myKnowledge = state.knownCards[playerId]?.[playerId] ?? {};
+    if (Object.keys(myKnowledge).length > 0) return []; // already peeked
 
-  // -- Power-pending phase: must resolve or skip the power. --
+    const hand = state.hands[playerId]!;
+    const peekCount = state.rules.initialPeekCount;
+    const indices = Array.from({ length: hand.length }, (_, i) => i);
+
+    return combinations(indices, peekCount).map((combo) => ({
+      type: 'choose_peek' as const,
+      playerId,
+      indices: combo,
+    }));
+  }
+
+  // ------------------------------------------------------------------
+  // Playing phase.
+  // ------------------------------------------------------------------
+  const isCurrentPlayer = state.players[state.turnIndex] === playerId;
+  const hand = state.hands[playerId] ?? [];
+  const handSize = hand.length;
+
+  // Power-pending: only the current player may resolve or skip.
   if (state.pendingPower !== null) {
+    if (!isCurrentPlayer) return [];
+
     const { power } = state.pendingPower;
+    const moves: Move[] = [];
 
     if (power === 'peek_self') {
       for (let i = 0; i < handSize; i++) {
-        moves.push({ type: 'use_peek_self', playerId, handIndex: i as HandIndex });
+        moves.push({ type: 'use_peek_self', playerId, handIndex: i });
       }
     }
 
     if (power === 'peek_opponent') {
       for (const opponent of state.players) {
         if (opponent === playerId) continue;
-        for (let i = 0; i < handSize; i++) {
+        const oppHandSize = (state.hands[opponent] ?? []).length;
+        for (let i = 0; i < oppHandSize; i++) {
           moves.push({
             type: 'use_peek_opponent',
             playerId,
             targetPlayer: opponent,
-            targetHandIndex: i as HandIndex,
+            targetHandIndex: i,
           });
         }
       }
@@ -42,13 +75,14 @@ export function legalMoves(state: GameState, playerId: PlayerId): ReadonlyArray<
       for (let selfIdx = 0; selfIdx < handSize; selfIdx++) {
         for (const opponent of state.players) {
           if (opponent === playerId) continue;
-          for (let oppIdx = 0; oppIdx < handSize; oppIdx++) {
+          const oppHandSize = (state.hands[opponent] ?? []).length;
+          for (let oppIdx = 0; oppIdx < oppHandSize; oppIdx++) {
             moves.push({
               type: 'use_swap_blind',
               playerId,
-              selfHandIndex: selfIdx as HandIndex,
+              selfHandIndex: selfIdx,
               targetPlayer: opponent,
-              targetHandIndex: oppIdx as HandIndex,
+              targetHandIndex: oppIdx,
             });
           }
         }
@@ -59,27 +93,62 @@ export function legalMoves(state: GameState, playerId: PlayerId): ReadonlyArray<
     return moves;
   }
 
-  // -- Card in hand (drawn but not yet placed). --
+  // Mid-draw: only the current player may resolve. Off-turn Pablo is blocked.
   if (state.drawn !== null) {
+    if (!isCurrentPlayer) return [];
+
+    const moves: Move[] = [];
     for (let i = 0; i < handSize; i++) {
-      moves.push({ type: 'swap_drawn', playerId, handIndex: i as HandIndex });
+      moves.push({ type: 'swap_drawn', playerId, handIndex: i });
     }
-    // Can only discard the drawn card if it came from the deck,
-    // or if the rule allows drawing from discard and re-discarding.
-    if (state.drawn.from === 'deck' || state.rules.allowDrawDiscardAndDiscard) {
-      moves.push({ type: 'discard_drawn', playerId });
+    moves.push({ type: 'discard_drawn', playerId });
+    for (let i = 0; i < handSize; i++) {
+      moves.push({ type: 'match_drawn', playerId, handIndex: i });
     }
     return moves;
   }
 
-  // -- Fresh turn: draw options + call Pablo. --
-  moves.push({ type: 'draw_from_deck', playerId });
-  if (state.discard.length > 0) {
-    moves.push({ type: 'draw_from_discard', playerId });
-  }
-  if (state.pabloCalledBy === null) {
-    moves.push({ type: 'call_pablo', playerId });
+  // Idle: current player gets turn moves; non-current gets off-turn Pablo.
+  if (isCurrentPlayer) {
+    const moves: Move[] = [];
+
+    moves.push({ type: 'draw_from_deck', playerId });
+
+    // match_hand: all unordered pairs of own slots.
+    for (let a = 0; a < handSize - 1; a++) {
+      for (let b = a + 1; b < handSize; b++) {
+        moves.push({ type: 'match_hand', playerId, handIndexA: a, handIndexB: b });
+      }
+    }
+
+    // match_discard: one per slot (only if discard is non-empty).
+    if (state.discard.length > 0) {
+      for (let i = 0; i < handSize; i++) {
+        moves.push({ type: 'match_discard', playerId, handIndex: i });
+      }
+    }
+
+    if (state.pabloCalledBy === null) {
+      moves.push({ type: 'call_pablo', playerId });
+    }
+
+    return moves;
   }
 
-  return moves;
+  // Non-current player in idle state: only off-turn call_pablo.
+  if (!state.players.includes(playerId)) return [];
+  if (state.pabloCalledBy === null) {
+    return [{ type: 'call_pablo', playerId }];
+  }
+  return [];
+}
+
+/** Generate all k-combinations from an array (order within each combo is preserved). */
+function combinations<T>(arr: T[], k: number): T[][] {
+  if (k === 0) return [[]];
+  if (arr.length < k) return [];
+  const [first, ...rest] = arr;
+  const withFirst = combinations(rest, k - 1).map((c) => [first!, ...c]);
+  const withoutFirst = combinations(rest, k);
+  return [...withFirst, ...withoutFirst];
 }

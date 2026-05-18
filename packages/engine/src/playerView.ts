@@ -1,36 +1,38 @@
-import type { GameState, HandIndex, PlayerId, PlayerView, PlayerViewEntry } from './types';
+import type { GameState, PlayerId, PlayerView, PlayerViewEntry } from './types';
 
 /**
  * Project a full GameState into what `playerId` is allowed to see.
  *
  * Hidden information:
- *  - The exact deck order and cards (only `deckCount` is returned).
- *  - Opponent hand cards that `playerId` has not peeked.
+ *  - The exact deck order and cards (only deckCount is returned).
+ *  - Opponent hand cards that playerId has not peeked or learned via powers.
+ *  - Penalty cards are face-down even to their owner (no knownCards entry).
  *
  * Visible information:
- *  - Everything in `knownCards[playerId]` — initial peek + power reveals.
+ *  - knownCards[self] for every player — peek reveals + power reveals.
  *  - The top of the discard pile.
  *  - The drawn card, but only to the player who drew it.
- *  - All public game scalars (status, turn, Pablo caller, etc.).
+ *  - All public game scalars (status, turn, Pablo caller, pending power, etc.).
+ *  - Full 52-card catalog (fixed public knowledge).
  */
 export function computePlayerView(state: GameState, playerId: PlayerId): PlayerView {
   if (!state.players.includes(playerId)) {
     throw new Error(`computePlayerView: unknown player "${playerId}"`);
   }
 
-  const currentPlayer = state.players[state.turnIndex]!;
+  const currentPlayerInTurn = state.players[state.turnIndex]!;
   const myKnowledge = state.knownCards[playerId] ?? {};
 
   const players: PlayerViewEntry[] = state.players.map((id) => {
     const hand = state.hands[id] ?? [];
     const theirKnowledge = myKnowledge[id] ?? {};
 
-    // Build a knownCards map: only include slots that (a) are in the knowledge
-    // map AND (b) the card id still matches the actual hand (guards against
-    // stale knowledge after a swap).
-    const knownCards: Partial<Record<HandIndex, string>> = {};
+    // Include only knowledge entries where the cardId still matches the actual
+    // hand slot (guards against stale knowledge after swaps, slot reindexing,
+    // or penalty-card appends that shifted higher indices).
+    const knownCards: Partial<Record<number, string>> = {};
     for (const [indexStr, cardId] of Object.entries(theirKnowledge)) {
-      const idx = Number(indexStr) as HandIndex;
+      const idx = Number(indexStr);
       if (hand[idx] === cardId) {
         knownCards[idx] = cardId;
       }
@@ -41,26 +43,28 @@ export function computePlayerView(state: GameState, playerId: PlayerId): PlayerV
       handSize: hand.length,
       knownCards,
       score: state.scores[id] ?? 0,
-      isCurrentTurn: id === currentPlayer,
+      isCurrentTurn: id === currentPlayerInTurn,
     };
   });
 
   const discardTop = state.discard.length > 0 ? state.discard[state.discard.length - 1]! : null;
 
-  const drawnCardId =
-    state.drawn !== null && state.drawn.playerId === playerId ? state.drawn.cardId : null;
+  const isMyDraw = state.drawn !== null && state.drawn.playerId === playerId;
+  const drawnCardId = isMyDraw ? state.drawn!.cardId : null;
+  const drawnFrom = isMyDraw ? state.drawn!.from : null;
 
   return {
     self: playerId,
     status: state.status,
-    roundNumber: state.roundNumber,
     deckCount: state.deck.length,
     discardTopCardId: discardTop,
-    currentPlayerId: currentPlayer,
+    currentPlayerId: currentPlayerInTurn,
     players,
     drawnCardId,
+    drawnFrom,
     pabloCalledBy: state.pabloCalledBy,
-    finalTurnsRemaining: state.finalTurnsRemaining,
+    pendingPower: state.pendingPower,
+    catalog: state.cardCatalog,
     rules: state.rules,
   };
 }

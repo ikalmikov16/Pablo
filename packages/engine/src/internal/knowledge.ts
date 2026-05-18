@@ -6,10 +6,10 @@
  * Internal — not re-exported from @pablo/engine.
  */
 
-import type { CardId, GameState, HandIndex, PlayerId } from '../types';
+import type { CardId, GameState, PlayerId } from '../types';
 
 type KnownCards = GameState['knownCards'];
-type MutableKnown = Record<PlayerId, Record<PlayerId, Partial<Record<HandIndex, CardId>>>>;
+type MutableKnown = Record<PlayerId, Record<PlayerId, Partial<Record<number, CardId>>>>;
 
 /** Deep-clone the knownCards map into a mutable structure. */
 function cloneKnown(known: KnownCards): MutableKnown {
@@ -31,7 +31,7 @@ export function setKnowledge(
   known: KnownCards,
   knower: PlayerId,
   target: PlayerId,
-  handIndex: HandIndex,
+  handIndex: number,
   cardId: CardId,
 ): KnownCards {
   const m = cloneKnown(known);
@@ -48,7 +48,7 @@ export function setKnowledge(
 export function clearSlotForAll(
   known: KnownCards,
   target: PlayerId,
-  handIndex: HandIndex,
+  handIndex: number,
 ): KnownCards {
   const m = cloneKnown(known);
   for (const knower of Object.keys(m)) {
@@ -60,21 +60,35 @@ export function clearSlotForAll(
 }
 
 /**
+ * Clear only the player's own self-knowledge of one slot.
+ *
+ * Used after a failed matching claim with reason='wrong_rank' to drop the
+ * player's stale memory of the targeted slot. Only touches knownCards[player][player];
+ * other knowers' entries for that slot are unaffected.
+ */
+export function clearOwnSlot(known: KnownCards, player: PlayerId, index: number): KnownCards {
+  const m = cloneKnown(known);
+  if (m[player]?.[player]) {
+    delete m[player]![player]![index];
+  }
+  return m;
+}
+
+/**
  * Symmetrically transfer knowledge when a blind swap is executed.
  *
  * For every knower K:
  *   - K's knowledge of p1[i] becomes K's knowledge of p2[j]
  *   - K's knowledge of p2[j] becomes K's knowledge of p1[i]
  *
- * If K didn't know one of the slots, the other slot's knowledge is still
- * transferred to the new position (one-directional partial swap is correct).
+ * One-directional partial transfers are correct when K only knew one side.
  */
 export function swapKnowledge(
   known: KnownCards,
   p1: PlayerId,
-  i: HandIndex,
+  i: number,
   p2: PlayerId,
-  j: HandIndex,
+  j: number,
 ): KnownCards {
   const m = cloneKnown(known);
   for (const knower of Object.keys(m)) {
@@ -96,6 +110,34 @@ export function swapKnowledge(
     } else {
       delete kMap[p2]![j];
     }
+  }
+  return m;
+}
+
+/**
+ * Reindex all knowers' entries for `targetPlayer` after slots are removed.
+ *
+ * indexMap[oldIdx] = newIdx (or undefined if the slot was removed).
+ * Entries pointing at removed slots are dropped. Entries pointing at kept
+ * slots are written at the new index.
+ */
+export function reindexKnowledgeForPlayer(
+  known: KnownCards,
+  targetPlayer: PlayerId,
+  indexMap: ReadonlyArray<number | undefined>,
+): KnownCards {
+  const m = cloneKnown(known);
+  for (const knower of Object.keys(m)) {
+    const oldEntries = { ...(m[knower]![targetPlayer] ?? {}) };
+    const newEntries: Partial<Record<number, CardId>> = {};
+    for (const [oldIdxStr, cardId] of Object.entries(oldEntries)) {
+      const oldIdx = Number(oldIdxStr);
+      const newIdx = indexMap[oldIdx];
+      if (newIdx !== undefined && cardId !== undefined) {
+        newEntries[newIdx] = cardId;
+      }
+    }
+    m[knower]![targetPlayer] = newEntries;
   }
   return m;
 }
