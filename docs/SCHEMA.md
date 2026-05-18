@@ -1,6 +1,6 @@
 # SCHEMA — Supabase Layer
 
-How the Supabase side fits together. The Phase 3 agent implements this; the engine team can read it for context.
+How the Supabase side fits together. The Phase 5 agent implements this; the engine team can read it for context. The mobile app (`apps/mobile`) consumes the backend through the `PabloClient` interface — see the "PabloClient contract" section at the bottom for what Phase 5 must expose.
 
 ## Philosophy
 
@@ -109,7 +109,12 @@ All functions:
 
 ## Realtime
 
-Clients subscribe to Postgres changes on `games` filtered by `id = <game_id>`. They don't get the payload (RLS blocks it) — they just learn "the state changed" and re-call `get_player_view` to fetch the new projection. This pattern is simple and cheat-proof.
+Two parallel streams per game, both filtered by `game_id`:
+
+1. **View stream** — clients subscribe to Postgres changes on `games` for their `game_id`. The payload is blocked by RLS; the change is just a "state changed" tick. On every tick the client calls `get_player_view(game_id)` and emits the new `(view, version)` pair to the in-app `PabloClient.subscribePlayerView` callback. (`version` comes from the `games.version` column.)
+2. **Event stream** — clients subscribe to `INSERT`s on `game_events` for their `game_id`, batching all rows whose `version > lastSeenVersion`. Each batch is emitted to `PabloClient.subscribeGameEvents`. Events drive the animation layer; the view stream remains the source of truth for state.
+
+This pattern is simple and cheat-proof: clients never see hidden data, and the two streams arrive in the order moves were applied (version-monotonic).
 
 ## Migration conventions
 
@@ -125,3 +130,63 @@ supabase db reset         # wipe + reapply migrations + seed
 supabase functions serve  # serve edge functions for local testing
 supabase status           # show local connection details
 ```
+
+## PabloClient contract (what the mobile app expects)
+
+The mobile app talks to the backend through the `PabloClient` interface defined in `apps/mobile/src/supabase/types.ts`. Phase 4 ships a mock implementation backed by `@pablo/engine` running in-process. Phase 6 swaps the import in `apps/mobile/src/supabase/index.ts` to a real implementation backed by this Supabase schema. The real client must match this surface exactly, because the app code never references mock-specific types.
+
+```ts
+type PabloClient = {
+  signIn(): Promise<ClientResult<PlayerId>>;
+  createRoom(opts: {
+    rules?: Partial<GameRules>;
+    maxPlayers?: number;
+  }): Promise<ClientResult<Room>>;
+  joinRoom(opts: { code: string }): Promise<ClientResult<Room>>;
+  leaveRoom(opts: { roomId: RoomId }): Promise<ClientResult<void>>;
+  startGame(opts: { roomId: RoomId }): Promise<ClientResult<GameId>>;
+  applyMove(opts: {
+    gameId: GameId;
+    move: Move;
+    idempotencyKey: string;
+    expectedVersion: number;
+  }): Promise<ClientResult<{ version: number }>>;
+  subscribeRoom(roomId: RoomId, onChange: (room: Room) => void): Unsubscribe;
+  subscribePlayerView(
+    gameId: GameId,
+    onChange: (view: PlayerView, version: number) => void,
+  ): Unsubscribe;
+  subscribeGameEvents(
+    gameId: GameId,
+    onChange: (events: ReadonlyArray<GameEvent>) => void,
+  ): Unsubscribe;
+};
+
+type ClientResult<T> = { ok: true; data: T } | { ok: false; error: ClientErrorCode };
+```
+
+Mapping to this schema:
+
+| `PabloClient` method  | Supabase implementation                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `signIn`              | `supabase.auth.signInAnonymously()`; resolves to the anon user id.                                                        |
+| `createRoom`          | RPC into a `create_room` SQL function (so RLS is enforced + atomic).                                                      |
+| `joinRoom`            | Edge function `joinRoom` (checks code, inserts `room_members`).                                                           |
+| `leaveRoom`           | Edge function `leaveRoom`.                                                                                                |
+| `startGame`           | Edge function `startGame` (host only).                                                                                    |
+| `applyMove`           | Edge function `applyMove` (idempotency + expectedVersion required).                                                       |
+| `subscribeRoom`       | Postgres-changes subscription on `rooms` + `room_members` filtered by `room_id`.                                          |
+| `subscribePlayerView` | View stream above. Callback receives the new projection and `games.version`.                                              |
+| `subscribeGameEvents` | Event stream above. Callback receives one or more `game_events` rows since the last delivery, in version-ascending order. |
+
+### `ClientErrorCode`
+
+`ClientResult.error` is a typed discriminated union, not a free-form string. The current set lives in `apps/mobile/src/supabase/types.ts`. New error codes must be added there first so the mobile UI can surface a translated message via `error.<code>` in the i18n bundle.
+
+- **Client/transport errors**: `not_found`, `version_mismatch`, `network_error`, `unauthenticated`, `not_authorized`, `room_full`, `room_not_joinable`, `internal_error`.
+- **Engine `MoveError` codes** (passed through verbatim from `applyMove`): `not_your_turn`, `must_draw_first`, `already_drawn`, `pablo_already_called`, `pablo_blocked`, `invalid_hand_index`, `same_index`, `duplicate_indices`, `invalid_peek_count`, `already_peeked`, `discard_empty`, `power_pending`, `game_already_ended`, `not_in_game`, `not_peek_phase`, `peek_phase_active`, `unknown_move`, etc. (See `packages/engine/src/types.ts` for the full list.)
+
+### Idempotency + versioning
+
+- Every `applyMove` call carries a unique `idempotencyKey` (UUID per attempt, retried with the same key). The mock client caches successful results by key; the real client persists the (gameId, idempotencyKey) → version mapping so a duplicate POST returns the same version without re-applying.
+- `expectedVersion` is the version the client saw most recently in `subscribePlayerView`. The server compares against `games.version`; mismatch returns `version_mismatch` and the client should resubscribe.

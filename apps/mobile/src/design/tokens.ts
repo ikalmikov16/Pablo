@@ -43,8 +43,43 @@ export const tokens = {
       elevation: 4,
     },
   },
-  /** Animation durations in ms — use with Reanimated withTiming/withSpring. */
-  duration: { fast: 150, normal: 250, slow: 450 } as const,
+  /** Game-specific surfaces, accents, and timing. */
+  game: {
+    surface: {
+      table: '#F1ECDD',
+      actionBar: '#FFFFFF',
+      actionBarBorder: '#E5E5E0',
+      slotEmpty: 'rgba(0,0,0,0.04)',
+      slotSelected: 'rgba(45,106,79,0.18)',
+      currentTurnTint: 'rgba(45,106,79,0.06)',
+      winnerRowTint: 'rgba(45,106,79,0.08)',
+      deckBadgeBg: 'rgba(0,0,0,0.55)',
+      toastBg: 'rgba(30,30,30,0.88)',
+    },
+    accent: {
+      pabloOnTurn: '#B23A48',
+      pabloOffTurn: '#D88C9A',
+      penaltyTint: 'rgba(178,58,72,0.12)',
+      powerActive: '#C77D08',
+      pabloSubText: 'rgba(255,255,255,0.8)',
+    },
+    duration: {
+      /** Delay between receiving an event batch and promoting the new view. */
+      eventDrain: 300,
+      /** Toast auto-dismiss duration. */
+      toast: 1800,
+      /** Toast fade-in/out duration. */
+      toastFade: 200,
+    },
+    size: {
+      /** Width of the mini cards in opponent rows. */
+      miniCard: 44,
+      /** Toast bottom inset and max width. */
+      toastBottom: 100,
+      toastMaxWidth: 280,
+    },
+    shake: { offset: 6 },
+  } as const,
 } as const;
 
 export type Tokens = typeof tokens;

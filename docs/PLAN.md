@@ -4,7 +4,7 @@ Living plan. Agents MUST update this after meaningful changes — move items bet
 
 ## Current phase
 
-**Phase 2.5 — Engine rules revision** ✅ complete. Next up: Phase 4 (single-player vs bot) or Phase 5 (Supabase) in parallel.
+**Phase 5 — Supabase backend** — next. **Phase 4** (single-player vs bot) is squash-merged to `main` (2026-05-18).
 
 ---
 
@@ -34,7 +34,7 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
 - ✅ `.cursor/hooks/typecheck.sh` verified — fires after edits, returns errors as `additional_context`.
 - ✅ **Phase 2 — Engine implementation** (`phase-2-engine` branch, PR open).
   - Seeded PRNG: cyrb128 + sfc32 (pure TS, no `Math.random`, deterministic across V8/Hermes/Deno).
-  - All public functions implemented and pure: `newGame`, `applyMove`, `computePlayerView`, `scoreRound`, `legalMoves`, `newMatch`, `startNextRound`, `endRound`.
+  - All public functions implemented and pure: `newGame`, `applyMove`, `computePlayerView`, `scoreRound`, `legalMoves`. (Note: `newMatch`/`startNextRound`/`endRound` were removed in Phase 2.5 when multi-round logic moved out of the engine.)
   - Per-player knowledge (`knownCards`) lives inside `GameState`.
   - `pendingPower` field tracks power-pending sub-turns.
   - `reshuffleCount` enables deterministic reshuffle sub-seeds.
@@ -63,10 +63,16 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
   - `__DEV__`-gated entry link on the home screen.
   - 152 tests, 0 failures (`bun run check` clean).
   - Implementation plan at `docs/plans/phase-3-card-lab.md`.
+- ✅ **Phase 4 — Single-player vs bot** (`phase-4-singleplayer` squash-merged to `main`, 2026-05-18).
+  - Expo Router groups `(home)`, `(game)`, `dev/`; home → new game with 1–3 bots; full game UI (hand grid, opponents, deck/discard, action bar, peek, powers, Pablo, end-of-round).
+  - `mockClient` + internal bot scheduler; `PabloClient` with versioned `subscribePlayerView`, `subscribeGameEvents`, typed `ClientErrorCode`; singleton in `apps/mobile/src/supabase/client.ts`.
+  - Zustand per-game store + `GameStoreProvider`; PowerFlow for J/Q/K resolution.
+  - Pre–Phase 5 audit on branch: doc sync (`GAME_LOGIC`, `PLAN`, `SCHEMA` PabloClient section), flat `error.*` i18n for all move/transport codes, game tokens for rgba/magic timings.
+  - `bun run check` clean; implementation plan at `docs/plans/phase-4-singleplayer.md`.
 
 ## In progress
 
-- (none — Phase 2.5 PR open, awaiting merge approval)
+_(none)_
 
 ---
 
@@ -102,9 +108,9 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
 
 ---
 
-### Phase 4 — Single-player vs bot (the playable milestone)
+### ✅ Phase 4 — Single-player vs bot (the playable milestone) — DONE (merged to `main`)
 
-**Branch**: `phase-4-singleplayer` · **Token budget**: $$ · **Model**: claude-4.6-sonnet medium thinking
+**Branch**: `phase-4-singleplayer` (merged) · **Token budget**: $$ · **Model**: claude-4.6-sonnet medium thinking
 
 **Goal**: A fully playable Pablo game on-device against bot opponents. No multiplayer, no Supabase. Validates the new (Phase 2.5) rules feel right.
 
@@ -305,6 +311,15 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
 | 2026-05-18 | Phase 4 absorbs the new five-turn-option UI, peek-phase UX, and off-turn Pablo affordance                        | These all surface engine state that Phase 2.5 added; no engine work is required for them, just UI wiring in Phase 4. Plan section rewritten in this commit to reflect the new requirements.                                         |
 | 2026-05-18 | Phase 5 collapses `callPablo` edge function into `applyMove`                                                     | Phase 2.5 made `call_pablo` a plain `Move` variant. A dedicated endpoint adds no value — the move is uniformly validated by `applyMove`. SCHEMA.md updated to remove the row.                                                       |
 | 2026-05-18 | v1 ships single-round only (one game = one round); no multi-round / best-of-N mode                               | Engine is single-round after Phase 2.5; multi-round bookkeeping (mock-client or `sessions` table) is meaningful work that doesn't validate the core gameplay loop. Reconsider post-launch.                                          |
+| 2026-05-18 | Phase 4 — `addBotsToRoom` on `MockClient` extension type only, not on `PabloClient`                              | Phase 6 rooms are joined by human players; bots are a single-player-mode concept. The asymmetry is explicit; `createRealClient()` doesn't implement it.                                                                             |
+| 2026-05-18 | Phase 4 — `subscribeGameEvents` added to `PabloClient`                                                           | Events drive animation; the mock fires them in-process; the real client will broadcast via a Supabase Realtime channel. Adding it now means Phase 6 only needs to fill in the broadcast plumbing.                                   |
+| 2026-05-18 | Phase 4 — Bot heuristic reads `PlayerView` only, not `GameState`                                                 | Honesty contract: bots must not cheat. The `bot.ts` module only receives a `PlayerView` from the bot scheduler; `GameState` is never passed in. Lint and types enforce the boundary.                                                |
+| 2026-05-18 | Phase 4 — Animation drain is a 300 ms setTimeout per batch (Phase 7 gets Reanimated choreography)                | Getting the game playable is higher priority than polished animations at this stage. The async animator contract means the Phase 7 upgrade is a drop-in handler swap.                                                               |
+| 2026-05-18 | Phase 4 — Bot Pablo threshold: 8 pts estimated total for off-turn Pablo; 5 pts + 1/30 chance for on-turn Pablo   | Calibrated for a 4-card hand with catalog-average prior (~6.5/card). Ensures bots call Pablo occasionally without being trivially predictable. Revisit with playtesting.                                                            |
+| 2026-05-18 | Phase 4 — Per-game Zustand store via context provider, not a global singleton                                    | A singleton would retain state between games; context mounts/unmounts with the route so teardown is free.                                                                                                                           |
+| 2026-05-18 | Phase 4 — Bot names: Cabo Cassette, Cambia, Pablito                                                              | Thematic names that fit the aesthetic without being generic ("Bot 1"). Pablito is a deliberate reference to the game name.                                                                                                          |
+| 2026-05-18 | Phase 4 squash-merge to `main`                                                                                   | User-authorised merge; linear history via squash; `phase-4-singleplayer` branch can be deleted on remote after push.                                                                                                                |
+| 2026-05-18 | `ClientResult.error` is `ClientTransportError \| MoveError` (`ClientErrorCode`)                                  | Phase 5 edge functions return the same discriminant set the UI translates; free-form strings are ruled out at compile time.                                                                                                         |
 
 ## Proposed decisions (need user input)
 

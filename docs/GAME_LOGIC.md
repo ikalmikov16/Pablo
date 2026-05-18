@@ -276,7 +276,7 @@ Visible:
 // types.ts — all types are readonly and discriminated where applicable.
 export type GameState = { ... };
 export type Move = { ... };          // 12 variants
-export type GameEvent = { ... };     // 16 variants
+export type GameEvent = { ... };     // 15 variants
 export type PlayerView = { ... };
 export type GameRules = { ... };
 export type MatchKind = 'drawn' | 'hand' | 'discard';

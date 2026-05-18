@@ -11,5 +11,130 @@
       "variantsTitle": "Variants",
       "openButton": "Open Card Lab"
     }
+  },
+  "home": {
+    "title": "Pablo",
+    "subtitle": "Play a round against bots",
+    "playVsBots": "Play vs bots",
+    "botCount": {
+      "title": "How many opponents?",
+      "one": "1 bot",
+      "two": "2 bots",
+      "three": "3 bots"
+    },
+    "start": "Start game",
+    "loading": "Starting…"
+  },
+  "botName": {
+    "1": "Cabo Cassette",
+    "2": "Cambia",
+    "3": "Pablito"
+  },
+  "game": {
+    "status": {
+      "yourTurn": "Your turn",
+      "opponentTurn": "{{name}}'s turn",
+      "peekPhase": "Peek phase",
+      "ended": "Round complete"
+    },
+    "peek": {
+      "instruction": "Tap {{count}} of your cards to peek",
+      "confirm": "Confirm",
+      "waitingForBots": "Waiting on {{remaining}} opponent…",
+      "waitingForBotsPlural": "Waiting on {{remaining}} opponents…"
+    },
+    "action": {
+      "draw": "Draw",
+      "matchHand": "Match in hand",
+      "matchDiscard": "Match discard",
+      "callPablo": "Pablo!",
+      "swap": "Swap",
+      "discard": "Discard",
+      "match": "Match",
+      "skipPower": "Skip",
+      "usePeekSelf": "Peek your card",
+      "usePeekOpponent": "Peek opponent",
+      "useSwapBlind": "Blind swap"
+    },
+    "actionHint": {
+      "afterDraw": "What will you do with the drawn card?",
+      "pickOwnSlot": "Pick one of your cards.",
+      "pickTwoOwnSlots": "Pick two of your cards.",
+      "pickOpponentSlot": "Pick an opponent's card."
+    },
+    "match": {
+      "fail": {
+        "wrong_rank": "Wrong rank — penalty card!",
+        "min_hand_size": "Can't drop below minimum hand size."
+      },
+      "success": "Match!"
+    },
+    "power": {
+      "peek_self": "Peek your card",
+      "peek_opponent": "Peek opponent",
+      "swap_blind": "Blind swap"
+    },
+    "pablo": {
+      "banner": "{{name}} called Pablo!",
+      "sublineOnTurn": "Round ending — scoring now.",
+      "sublineOffTurn": "Round ends after the next turn reaches {{name}}.",
+      "callButton": "Call Pablo"
+    },
+    "deck": {
+      "count": "{{count}}",
+      "empty": "Empty",
+      "reshuffled": "Deck reshuffled"
+    },
+    "discard": {
+      "empty": "Discard"
+    },
+    "drawn": {
+      "label": "Drawn"
+    },
+    "leave": "Leave",
+    "you": "You",
+    "score": "{{score}} pts"
+  },
+  "result": {
+    "title": "Round over",
+    "winners": {
+      "single": "{{name}} wins!",
+      "tie": "Tie: {{names}}"
+    },
+    "score": "{{score}} pts",
+    "totals": "Totals",
+    "playAgain": "Play again",
+    "home": "Home"
+  },
+  "error": {
+    "generic": "Something went wrong.",
+    "not_your_turn": "Not your turn.",
+    "not_in_game": "You're not in this game.",
+    "must_draw_first": "Draw a card first.",
+    "already_drawn": "You've already drawn.",
+    "illegal_target": "You can't target that slot.",
+    "power_not_available": "That power isn't available.",
+    "power_pending": "Resolve the current power first.",
+    "no_power_to_resolve": "There's no power waiting.",
+    "pablo_already_called": "Pablo has already been called.",
+    "pablo_blocked": "Can't call Pablo right now.",
+    "invalid_hand_index": "Invalid slot.",
+    "same_index": "Pick two different slots.",
+    "duplicate_indices": "Pick distinct slots.",
+    "invalid_peek_count": "Pick exactly {{count}} cards.",
+    "already_peeked": "You've already peeked.",
+    "discard_empty": "The discard pile is empty.",
+    "not_peek_phase": "Not in peek phase.",
+    "peek_phase_active": "Wait for the peek phase to finish.",
+    "game_already_ended": "This round is over.",
+    "unknown_move": "Unknown move.",
+    "version_mismatch": "Out of sync — please wait.",
+    "not_found": "Game not found.",
+    "network_error": "Network error — please try again.",
+    "unauthenticated": "You need to sign in.",
+    "not_authorized": "You don't have permission to do that.",
+    "room_full": "That room is full.",
+    "room_not_joinable": "That room isn't accepting players.",
+    "internal_error": "Something went wrong on the server."
   }
 }

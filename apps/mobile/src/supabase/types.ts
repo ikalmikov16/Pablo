@@ -8,7 +8,7 @@
  * Phase 6 swaps to the real client.
  */
 
-import type { GameRules, Move, PlayerId, PlayerView } from '@pablo/engine';
+import type { GameEvent, GameRules, Move, MoveError, PlayerId, PlayerView } from '@pablo/engine';
 
 export type RoomId = string;
 export type GameId = string;
@@ -23,9 +23,30 @@ export type Room = {
   readonly rules: GameRules;
 };
 
+/**
+ * Client-layer errors. Either a transport/auth issue surfaced by the client
+ * or an engine `MoveError` passed through verbatim from a failed `applyMove`.
+ *
+ * The mobile UI translates each code to a user-visible string via
+ * `error.<code>` in the i18n bundle (`apps/mobile/src/i18n/locales/en.json`).
+ * Adding a new code without adding the matching i18n key is a regression —
+ * the UI will fall back to showing the raw key.
+ */
+export type ClientTransportError =
+  | 'not_found'
+  | 'version_mismatch'
+  | 'network_error'
+  | 'unauthenticated'
+  | 'not_authorized'
+  | 'room_full'
+  | 'room_not_joinable'
+  | 'internal_error';
+
+export type ClientErrorCode = ClientTransportError | MoveError;
+
 export type ClientResult<T> =
   | { readonly ok: true; readonly data: T }
-  | { readonly ok: false; readonly error: string };
+  | { readonly ok: false; readonly error: ClientErrorCode };
 
 export type Unsubscribe = () => void;
 
@@ -58,6 +79,29 @@ export interface PabloClient {
   /** Subscribe to room metadata changes (members joining, status, etc.). */
   subscribeRoom(roomId: RoomId, onChange: (room: Room) => void): Unsubscribe;
 
-  /** Subscribe to the per-player view of an in-progress game. */
-  subscribePlayerView(gameId: GameId, onChange: (view: PlayerView) => void): Unsubscribe;
+  /**
+   * Subscribe to the per-player view of an in-progress game.
+   *
+   * The callback receives the projected view AND the game's current version
+   * (the value of `version` corresponding to this view). Callers store the
+   * version and pass it as `expectedVersion` in subsequent `applyMove` calls
+   * to detect optimistic-lock conflicts.
+   */
+  subscribePlayerView(
+    gameId: GameId,
+    onChange: (view: PlayerView, version: number) => void,
+  ): Unsubscribe;
+
+  /**
+   * Subscribe to game events as they are applied. Events arrive in the same
+   * order as the moves that produced them. The animation layer drains this
+   * channel; the view subscription is the source of truth for state.
+   *
+   * Phase 6 (realClient) delivers these via a Supabase Realtime broadcast
+   * channel; the mock delivers them in-process.
+   */
+  subscribeGameEvents(
+    gameId: GameId,
+    onChange: (events: ReadonlyArray<GameEvent>) => void,
+  ): Unsubscribe;
 }
