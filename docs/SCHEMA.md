@@ -91,13 +91,14 @@ RLS: room members can read events for games in their room (but events are pre-pr
 
 All live in `supabase/functions/`. All written in TypeScript, run on Deno. All import the engine via a deno-compatible bundle or direct `.ts` imports.
 
-| Function    | Purpose                   | Inputs                                              | Side effects                                                         |
-| ----------- | ------------------------- | --------------------------------------------------- | -------------------------------------------------------------------- |
-| `joinRoom`  | Add caller to a room      | `{ roomCode }`                                      | inserts `room_members` row                                           |
-| `leaveRoom` | Remove caller from a room | `{ roomId }`                                        | deletes row; if last member, deletes room                            |
-| `startGame` | Host starts the game      | `{ roomId }`                                        | calls `engine.newGame`, inserts `games` row, updates `rooms.status`  |
-| `applyMove` | Submit a move             | `{ gameId, move, idempotencyKey, expectedVersion }` | calls `engine.applyMove`, writes new state, appends to `game_events` |
-| `callPablo` | Convenience wrapper       | `{ gameId, idempotencyKey, expectedVersion }`       | calls `applyMove` with a `call_pablo` move                           |
+| Function    | Purpose                   | Inputs                                              | Side effects                                                                                                                                                                         |
+| ----------- | ------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `joinRoom`  | Add caller to a room      | `{ roomCode }`                                      | inserts `room_members` row                                                                                                                                                           |
+| `leaveRoom` | Remove caller from a room | `{ roomId }`                                        | deletes row; if last member, deletes room                                                                                                                                            |
+| `startGame` | Host starts the game      | `{ roomId }`                                        | calls `engine.newGame`, inserts `games` row in `status='peek_phase'`, updates `rooms.status`                                                                                         |
+| `applyMove` | Submit any move           | `{ gameId, move, idempotencyKey, expectedVersion }` | calls `engine.applyMove`, writes new state, appends to `game_events`. Handles `choose_peek`, the five turn options, power resolution, and `call_pablo` (on- and off-turn) uniformly. |
+
+> Phase 2.5 collapsed `callPablo` into `applyMove`. `call_pablo` is just one of `Move`'s variants — no separate endpoint.
 
 All functions:
 
