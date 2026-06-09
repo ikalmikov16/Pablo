@@ -60,6 +60,7 @@ export function GameStoreProvider({ gameId, client, children }: Props) {
     });
 
     return () => {
+      store.getState().disposeFlightTimers();
       unsubView();
       unsubEvents();
     };

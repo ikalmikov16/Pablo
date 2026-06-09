@@ -1,19 +1,28 @@
 /**
  * DeckArea — shows the draw pile and the discard pile top card.
- * Tapping the deck triggers draw_from_deck when legal.
+ * Tapping anywhere on the draw card triggers draw_from_deck when legal.
  */
 
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+} from 'react-native-reanimated';
 
 import type { Card } from '@pablo/engine';
 import { defaultCardTheme } from '../../design/cardTheme';
 import { tokens } from '../../design/tokens';
 import { t } from '../../i18n';
 import { PlayingCard } from '../cards/PlayingCard';
+import { springFor } from '../../feedback/motion';
+import { useGameStore } from '../../store/provider';
+import { selectDiscardPulse } from '../../store/selectors';
+import { useAnchor } from './internal/useAnchor';
 
-const CARD_W = 72;
-const CARD_H = Math.floor(CARD_W * 1.46);
+const CARD_ASPECT = 1.46;
 const FACE_DOWN_CARD: Card = { suit: 'spades', rank: 1 };
 
 type Props = {
@@ -22,54 +31,83 @@ type Props = {
   readonly catalog: Readonly<Record<string, Card>>;
   readonly canDraw: boolean;
   readonly onDraw: () => void;
+  readonly cardWidth?: number;
 };
 
-export function DeckArea({ deckCount, discardTopCardId, catalog, canDraw, onDraw }: Props) {
+export function DeckArea({
+  deckCount,
+  discardTopCardId,
+  catalog,
+  canDraw,
+  onDraw,
+  cardWidth = tokens.game.size.deckCard,
+}: Props) {
+  const cardHeight = Math.floor(cardWidth * CARD_ASPECT);
   const discardCard = discardTopCardId ? catalog[discardTopCardId] : null;
+  const deckLabel =
+    deckCount > 0 ? t('game.deck.count', { count: deckCount }) : t('game.deck.empty');
+
+  const deckAnchor = useAnchor({ kind: 'deck' });
+  const discardAnchor = useAnchor({ kind: 'discard' });
+  const discardPulse = useGameStore(selectDiscardPulse);
+  const discardScale = useSharedValue(1);
+
+  useEffect(() => {
+    if (!discardPulse) return;
+    discardScale.value = withSequence(
+      withSpring(1.06, springFor('pulse')),
+      withSpring(1, springFor('pulse')),
+    );
+  }, [discardPulse, discardScale]);
+
+  const discardPulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: discardScale.value }],
+  }));
 
   return (
     <View style={styles.row}>
-      {/* Draw pile */}
       <View style={styles.pileGroup}>
-        <TouchableOpacity
-          onPress={onDraw}
-          disabled={!canDraw}
-          activeOpacity={0.7}
+        <View
+          ref={deckAnchor.ref}
+          onLayout={deckAnchor.onLayout}
           style={[styles.cardSlot, !canDraw && styles.disabled]}
+          collapsable={false}
         >
           <PlayingCard
             card={FACE_DOWN_CARD}
             faceUp={false}
             theme={defaultCardTheme}
-            size={{ width: CARD_W, height: CARD_H }}
+            size={{ width: cardWidth, height: cardHeight }}
             draggable={false}
             flippable={false}
+            onTap={canDraw ? onDraw : undefined}
           />
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>
-              {deckCount > 0 ? t('game.deck.count', { count: deckCount }) : t('game.deck.empty')}
-            </Text>
-          </View>
-        </TouchableOpacity>
-        <Text style={styles.label}>{t('game.deck.count', { count: deckCount })}</Text>
+        </View>
+        <Text style={styles.label}>{deckLabel}</Text>
       </View>
 
-      {/* Discard pile */}
       <View style={styles.pileGroup}>
-        <View style={styles.cardSlot}>
-          {discardCard ? (
-            <PlayingCard
-              card={discardCard}
-              faceUp={true}
-              theme={defaultCardTheme}
-              size={{ width: CARD_W, height: CARD_H }}
-              draggable={false}
-              flippable={false}
-            />
-          ) : (
-            <View style={[styles.emptyDiscard, { width: CARD_W, height: CARD_H }]} />
-          )}
-        </View>
+        <Animated.View style={discardPulseStyle}>
+          <View
+            ref={discardAnchor.ref}
+            onLayout={discardAnchor.onLayout}
+            style={styles.cardSlot}
+            collapsable={false}
+          >
+            {discardCard ? (
+              <PlayingCard
+                card={discardCard}
+                faceUp={true}
+                theme={defaultCardTheme}
+                size={{ width: cardWidth, height: cardHeight }}
+                draggable={false}
+                flippable={false}
+              />
+            ) : (
+              <View style={[styles.emptyDiscard, { width: cardWidth, height: cardHeight }]} />
+            )}
+          </View>
+        </Animated.View>
         <Text style={styles.label}>{t('game.discard.empty')}</Text>
       </View>
     </View>
@@ -82,7 +120,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-start',
     gap: tokens.space.xl,
-    paddingVertical: tokens.space.md,
   },
   pileGroup: {
     alignItems: 'center',
@@ -98,22 +135,6 @@ const styles = StyleSheet.create({
     borderColor: tokens.color.border.subtle,
     borderStyle: 'dashed',
     borderRadius: tokens.radius.md,
-  },
-  badge: {
-    position: 'absolute',
-    bottom: tokens.space.xs,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  badgeText: {
-    backgroundColor: tokens.game.surface.deckBadgeBg,
-    color: tokens.color.text.inverse,
-    fontSize: tokens.font.size.xs,
-    paddingHorizontal: tokens.space.xs,
-    paddingVertical: 2,
-    borderRadius: tokens.radius.sm,
-    overflow: 'hidden',
   },
   disabled: {
     opacity: 0.4,

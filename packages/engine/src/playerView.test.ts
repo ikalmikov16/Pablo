@@ -268,6 +268,26 @@ describe('computePlayerView — ended state', () => {
     const aliceEntry = view.players.find((p) => p.id === 'alice')!;
     expect(typeof aliceEntry.score).toBe('number');
   });
+
+  it('reveals every slot in every hand when the round has ended', () => {
+    const state = makePlayingGame();
+    const pablo = applyMove(state, { type: 'call_pablo', playerId: 'alice' });
+    if (!pablo.ok) return;
+    const view = computePlayerView(pablo.state, 'bob');
+    for (const entry of view.players) {
+      expect(Object.keys(entry.knownCards).length).toBe(entry.handSize);
+      for (let i = 0; i < entry.handSize; i++) {
+        expect(entry.knownCards[i]).toBeDefined();
+      }
+    }
+  });
+
+  it('does not reveal opponent slots mid-round beyond existing knowledge', () => {
+    const state = makePlayingGame();
+    const view = computePlayerView(state, 'alice');
+    const bob = view.players.find((p) => p.id === 'bob')!;
+    expect(Object.keys(bob.knownCards).length).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

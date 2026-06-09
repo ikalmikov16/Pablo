@@ -31,10 +31,9 @@
 import { memo, useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Canvas, RoundedRect } from '@shopify/react-native-skia';
+import { Canvas, Group, RoundedRect } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  Easing,
   interpolate,
   runOnJS,
   useAnimatedStyle,
@@ -44,8 +43,10 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import type { Card } from '@pablo/engine';
+import { CARD_FLIP_TIMING } from '../../feedback/motion';
 import type { CardTheme } from '../../design/cardTheme';
 import { rankLabel, suitColor, suitGlyph } from './internal/cardHelpers';
+import { sizesFor } from './internal/cardSizes';
 
 export type PlayingCardSize = { width: number; height: number };
 
@@ -67,6 +68,8 @@ export type PlayingCardProps = {
    * visual selected/highlighted styling on a sibling view.
    */
   onTap?: () => void;
+  /** Skip flip timing — use on flight overlays so parent translate does not fight 3D flip. */
+  suppressFlipAnimation?: boolean;
 };
 
 const DEFAULT_SIZE: PlayingCardSize = { width: 220, height: 320 };
@@ -76,21 +79,6 @@ const SNAP_SPRING = { damping: 18, stiffness: 220, mass: 1 } as const;
 
 /** Flip timing: inOut cubic, 450 ms — avoids the spring overshoot that causes
  *  double-crossover at the 90° half-turn. */
-const FLIP_TIMING = { duration: 450, easing: Easing.inOut(Easing.cubic) } as const;
-
-/** Font/inset sizes scale linearly with card width so the same component looks
- *  right at both the interactive size (220×320) and the variants thumbnail (72×104). */
-function sizesFor(width: number) {
-  return {
-    rank: Math.round(width * 0.1),
-    suitSmall: Math.round(width * 0.075),
-    centerSuit: Math.round(width * 0.25),
-    cornerInsetX: Math.max(4, Math.round(width * 0.05)),
-    cornerInsetY: Math.max(4, Math.round(width * 0.045)),
-    borderStroke: Math.max(1, Math.round(width * 0.008)),
-  };
-}
-
 function PlayingCardComponent({
   card,
   faceUp,
@@ -100,6 +88,7 @@ function PlayingCardComponent({
   flippable = true,
   onFlip,
   onTap,
+  suppressFlipAnimation = false,
 }: PlayingCardProps) {
   const { width: W, height: H } = size;
   const s = useMemo(() => sizesFor(W), [W]);
@@ -112,8 +101,12 @@ function PlayingCardComponent({
   // Keep the flip animation in sync with the `faceUp` prop. When a parent
   // updates `faceUp`, we animate to the new target rather than snapping.
   useEffect(() => {
-    flipProgress.value = withTiming(faceUp ? 1 : 0, FLIP_TIMING);
-  }, [faceUp, flipProgress]);
+    if (suppressFlipAnimation) {
+      flipProgress.value = faceUp ? 1 : 0;
+      return;
+    }
+    flipProgress.value = withTiming(faceUp ? 1 : 0, CARD_FLIP_TIMING);
+  }, [faceUp, flipProgress, suppressFlipAnimation]);
 
   // --- Gestures ---
 
@@ -124,7 +117,7 @@ function PlayingCardComponent({
       'worklet';
       if (flippable) {
         const nextValue = flipProgress.value < 0.5 ? 1 : 0;
-        flipProgress.value = withTiming(nextValue, FLIP_TIMING);
+        flipProgress.value = withTiming(nextValue, CARD_FLIP_TIMING);
         if (onFlip) {
           runOnJS(onFlip)(nextValue === 1);
         }
@@ -178,21 +171,29 @@ function PlayingCardComponent({
     () => ({
       bg: theme.back.palette.primary,
       secondary: theme.back.palette.secondary,
-      r: theme.border.radius,
+      accent: theme.back.palette.accent,
+      r: s.radius,
+      inset: s.backInset,
     }),
-    // Keyed on theme.id: re-memoizes when theme identity changes, not every render.
-    [theme.id, W, H],
+    [theme.id, s.radius, s.backInset, theme.back.palette],
   );
 
   const faceElements = useMemo(
     () => ({
       bg: theme.face.palette.bg,
       border: theme.face.palette.border,
-      r: theme.border.radius,
+      r: s.radius,
     }),
-    // Keyed on theme.id: re-memoizes when theme identity changes, not every render.
-    [theme.id, W, H],
+    [theme.id, s.radius, theme.face.palette],
   );
+
+  const backMotif = useMemo(() => {
+    const inset = s.backInset;
+    const innerW = W - inset * 2;
+    const innerH = H - inset * 2;
+    const diamond = 0.5 * Math.min(innerW, innerH);
+    return { inset, innerW, innerH, diamond, cx: W / 2, cy: H / 2 };
+  }, [W, H, s.backInset]);
 
   const textColor = suitColor(card.suit, theme);
   const label = rankLabel(card.rank);
@@ -220,13 +221,29 @@ function PlayingCardComponent({
             color={backElements.bg}
           />
           <RoundedRect
-            x={8}
-            y={8}
-            width={W - 16}
-            height={H - 16}
+            x={backElements.inset}
+            y={backElements.inset}
+            width={W - backElements.inset * 2}
+            height={H - backElements.inset * 2}
             r={Math.max(backElements.r - 4, 2)}
             color={backElements.secondary}
           />
+          <Group
+            transform={[
+              { translateX: backMotif.cx },
+              { translateY: backMotif.cy },
+              { rotate: Math.PI / 4 },
+            ]}
+          >
+            <RoundedRect
+              x={-backMotif.diamond / 2}
+              y={-backMotif.diamond / 2}
+              width={backMotif.diamond}
+              height={backMotif.diamond}
+              r={Math.max(2, Math.round(backMotif.diamond * 0.15))}
+              color={backElements.accent}
+            />
+          </Group>
         </Canvas>
       </Animated.View>
 
@@ -315,7 +332,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rankText: {
-    fontWeight: '700',
+    fontWeight: '800',
   },
   suitSmall: {},
   centerSuit: {},

@@ -1,23 +1,23 @@
 /**
  * EndOfRound overlay — shown when status === 'ended'.
  *
- * Flips every opponent's hand face-up with a stagger, shows per-player totals,
- * declares the winner(s), and offers Play again / Home.
+ * Shows every player's full hand face-up (via ended-state PlayerView projection),
+ * per-player totals, winner(s), and Play again / Home.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import type { Card, PlayerId } from '@pablo/engine';
-import { defaultCardTheme } from '../../design/cardTheme';
 import { tokens } from '../../design/tokens';
+import { springFor } from '../../feedback/motion';
 import { t } from '../../i18n';
 import { useGameStore, useGameStoreShallow } from '../../store/provider';
 import { selectPlayers, selectSelf, selectView } from '../../store/selectors';
-import { PlayingCard } from '../cards/PlayingCard';
+import { CardSlotGrid } from './internal/CardSlotGrid';
 
-const CARD_W = 52;
-const CARD_H = Math.floor(CARD_W * 1.46);
+const CARD_W = tokens.game.size.endRoundCard;
 const FACE_DOWN_CARD: Card = { suit: 'spades', rank: 1 };
 
 type Props = {
@@ -47,9 +47,22 @@ export function EndOfRound({ catalog, displayName, onPlayAgain, onHome }: Props)
       ? t('result.winners.single', { name: winnerNames })
       : t('result.winners.tie', { names: winnerNames });
 
+  const sheetScale = useSharedValue(0.94);
+  const sheetOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    sheetScale.value = withSpring(1, springFor('settle'));
+    sheetOpacity.value = withSpring(1, springFor('gentle'));
+  }, [sheetOpacity, sheetScale]);
+
+  const sheetAnimStyle = useAnimatedStyle(() => ({
+    opacity: sheetOpacity.value,
+    transform: [{ scale: sheetScale.value }],
+  }));
+
   return (
     <View style={styles.overlay}>
-      <View style={styles.sheet}>
+      <Animated.View style={[styles.sheet, sheetAnimStyle]}>
         <Text style={styles.title}>{t('result.title')}</Text>
         <Text style={styles.winnerLine}>{winnerLine}</Text>
 
@@ -60,30 +73,30 @@ export function EndOfRound({ catalog, displayName, onPlayAgain, onHome }: Props)
             .sort((a, b) => (scores[a.id] ?? 0) - (scores[b.id] ?? 0))
             .map((p) => {
               const isWinner = winners.includes(p.id);
+              const slots = Array.from({ length: p.handSize }, (_, index) => {
+                const cardId = p.knownCards[index];
+                return {
+                  index,
+                  card: cardId ? (catalog[cardId] ?? FACE_DOWN_CARD) : null,
+                };
+              });
+              const cols = slots.length <= 4 ? 2 : slots.length <= 6 ? 3 : 4;
+              const gridWidth = cols * CARD_W + (cols - 1) * tokens.game.table.handGap;
+
               return (
                 <View key={p.id} style={[styles.scoreRow, isWinner && styles.winnerRow]}>
                   <Text style={[styles.scoreName, isWinner && styles.winnerText]}>
                     {p.id === self ? t('game.you') : displayName(p.id)}
                   </Text>
 
-                  {/* Show revealed hand */}
                   <View style={styles.handReveal}>
-                    {Array.from({ length: p.handSize }, (_, i) => {
-                      const knownId = p.knownCards[i];
-                      const card = knownId ? (catalog[knownId] ?? null) : null;
-                      return (
-                        <View key={i} style={styles.revealCard}>
-                          <PlayingCard
-                            card={card ?? FACE_DOWN_CARD}
-                            faceUp={card !== null}
-                            theme={defaultCardTheme}
-                            size={{ width: CARD_W, height: CARD_H }}
-                            draggable={false}
-                            flippable={false}
-                          />
-                        </View>
-                      );
-                    })}
+                    <CardSlotGrid
+                      slots={slots}
+                      gridWidth={gridWidth}
+                      cardWidth={CARD_W}
+                      gap={tokens.game.table.handGap}
+                      faceUpFor={() => true}
+                    />
                   </View>
 
                   <Text style={[styles.scoreValue, isWinner && styles.winnerText]}>
@@ -102,7 +115,7 @@ export function EndOfRound({ catalog, displayName, onPlayAgain, onHome }: Props)
             <Text style={styles.primaryBtnText}>{t('result.playAgain')}</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -173,13 +186,7 @@ const styles = StyleSheet.create({
   },
   handReveal: {
     flex: 1,
-    flexDirection: 'row',
-    gap: tokens.space.xs,
-    flexWrap: 'wrap',
-  },
-  revealCard: {
-    borderRadius: tokens.radius.sm,
-    overflow: 'hidden',
+    alignItems: 'center',
   },
   scoreValue: {
     width: 52,

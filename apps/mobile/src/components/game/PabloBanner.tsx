@@ -5,36 +5,34 @@
 
 import React, { useEffect } from 'react';
 import { StyleSheet, Text } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
+import { BANNER_OFFSCREEN_Y, springFor } from '../../feedback/motion';
 import { tokens } from '../../design/tokens';
 import { t } from '../../i18n';
+import { resolveDisplayName } from '../../store/displayName';
 import { useGameStore } from '../../store/provider';
-import { selectCurrentPlayerId, selectPabloCalledBy, selectSelf } from '../../store/selectors';
+import { selectCurrentPlayerId, selectPabloCalledBy, selectView } from '../../store/selectors';
 
-type Props = {
-  readonly displayName: (id: string) => string;
-};
-
-export function PabloBanner({ displayName }: Props) {
+export function PabloBanner() {
+  const view = useGameStore(selectView);
   const pabloCalledBy = useGameStore(selectPabloCalledBy);
-  const self = useGameStore(selectSelf);
   const currentPlayer = useGameStore(selectCurrentPlayerId);
 
-  const translateY = useSharedValue(-80);
+  const translateY = useSharedValue(BANNER_OFFSCREEN_Y);
 
   useEffect(() => {
-    translateY.value = withTiming(pabloCalledBy ? 0 : -80, { duration: 350 });
+    translateY.value = withSpring(pabloCalledBy ? 0 : BANNER_OFFSCREEN_Y, springFor('banner'));
   }, [pabloCalledBy, translateY]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
 
-  if (!pabloCalledBy) return null;
+  if (!pabloCalledBy || !view) return null;
 
   const isOnTurn = pabloCalledBy === currentPlayer;
-  const callerName = pabloCalledBy === self ? t('game.you') : displayName(pabloCalledBy);
+  const callerName = resolveDisplayName(view, pabloCalledBy);
   const subline = isOnTurn
     ? t('game.pablo.sublineOnTurn')
     : t('game.pablo.sublineOffTurn', { name: callerName });

@@ -85,6 +85,7 @@
     },
     "pablo": {
       "banner": "{{name}} called Pablo!",
+      "calledToast": "{{name}} called Pablo!",
       "sublineOnTurn": "Round ending — scoring now.",
       "sublineOffTurn": "Round ends after the next turn reaches {{name}}.",
       "callButton": "Call Pablo"
@@ -98,7 +99,14 @@
       "empty": "Discard"
     },
     "drawn": {
+      "yourCard": "Your drawn card",
       "label": "Drawn"
+    },
+    "flight": {
+      "discardToast": "{{name}} discarded {{card}}",
+      "swapDiscardToast": "{{name}} swapped and discarded {{card}}",
+      "matchDiscardToast": "{{name}} matched and discarded {{card}}",
+      "matchDiscardPairToast": "{{name}} matched and discarded two {{rank}}s"
     },
     "leave": "Leave",
     "you": "You",

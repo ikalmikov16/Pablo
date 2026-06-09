@@ -19,12 +19,14 @@
  * memorise their cards.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import type { Card, Move } from '@pablo/engine';
 import { defaultCardTheme } from '../../design/cardTheme';
 import { tokens } from '../../design/tokens';
+import { springFor } from '../../feedback/motion';
 import { t } from '../../i18n';
 import { useGameStore, useGameStoreShallow } from '../../store/provider';
 import {
@@ -92,9 +94,22 @@ export function PeekOverlay({ catalog, onPeekOne, onDismiss }: Props) {
 
   const rows = chunk(slots, colsFor(slots.length));
 
+  const panelScale = useSharedValue(0.94);
+  const panelOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    panelScale.value = withSpring(1, springFor('settle'));
+    panelOpacity.value = withSpring(1, springFor('gentle'));
+  }, [panelOpacity, panelScale]);
+
+  const panelStyle = useAnimatedStyle(() => ({
+    opacity: panelOpacity.value,
+    transform: [{ scale: panelScale.value }],
+  }));
+
   return (
     <View style={styles.overlay}>
-      <View style={styles.card}>
+      <Animated.View style={[styles.card, panelStyle]}>
         <Text style={styles.title}>
           {canDismiss
             ? t('game.peek.memorise')
@@ -144,7 +159,7 @@ export function PeekOverlay({ catalog, onPeekOne, onDismiss }: Props) {
         >
           <Text style={styles.confirmText}>{t('game.peek.gotIt')}</Text>
         </TouchableOpacity>
-      </View>
+      </Animated.View>
     </View>
   );
 }

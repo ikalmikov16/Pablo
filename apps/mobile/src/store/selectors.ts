@@ -9,6 +9,7 @@
  */
 
 import {
+  type GameEvent,
   type HandIndex,
   type Move,
   type PlayerId,
@@ -17,6 +18,8 @@ import {
   legalMoves as engineLegalMoves,
 } from '@pablo/engine';
 import type { GameStore, SlotSelection } from './gameStore';
+import { anchorKey, type AnchorId } from './flightTypes';
+import { destinationKeysFromFlights, sourceKeysFromFlights, type Flight } from './flightTypes';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -79,6 +82,14 @@ export function selectView(s: GameStore): PlayerView | null {
   return s.view;
 }
 
+function resolveDisplayView(s: GameStore): PlayerView | null {
+  return s.displayView ?? s.view;
+}
+
+export function selectDisplayView(s: GameStore): PlayerView | null {
+  return resolveDisplayView(s);
+}
+
 export function selectSelf(s: GameStore): PlayerId | null {
   return s.view?.self ?? null;
 }
@@ -126,9 +137,7 @@ export type HandSlot = {
 const EMPTY_HAND_SLOTS: ReadonlyArray<HandSlot> = [];
 const handSlotsCache = new WeakMap<PlayerView, ReadonlyArray<HandSlot>>();
 
-export function selectMyHandSlots(s: GameStore): ReadonlyArray<HandSlot> {
-  const v = s.view;
-  if (!v) return EMPTY_HAND_SLOTS;
+function handSlotsForView(v: PlayerView): ReadonlyArray<HandSlot> {
   const cached = handSlotsCache.get(v);
   if (cached) return cached;
   const me = v.players.find((p) => p.id === v.self);
@@ -142,6 +151,18 @@ export function selectMyHandSlots(s: GameStore): ReadonlyArray<HandSlot> {
   return result;
 }
 
+export function selectMyHandSlots(s: GameStore): ReadonlyArray<HandSlot> {
+  const v = s.view;
+  if (!v) return EMPTY_HAND_SLOTS;
+  return handSlotsForView(v);
+}
+
+export function selectMyHandSlotsDisplay(s: GameStore): ReadonlyArray<HandSlot> {
+  const v = resolveDisplayView(s);
+  if (!v) return EMPTY_HAND_SLOTS;
+  return handSlotsForView(v);
+}
+
 export function selectMyHandSize(s: GameStore): number {
   const v = s.view;
   if (!v) return 0;
@@ -151,14 +172,24 @@ export function selectMyHandSize(s: GameStore): number {
 const EMPTY_OPPONENTS: ReadonlyArray<PlayerViewEntry> = [];
 const opponentEntriesCache = new WeakMap<PlayerView, ReadonlyArray<PlayerViewEntry>>();
 
-export function selectOpponentEntries(s: GameStore): ReadonlyArray<PlayerViewEntry> {
-  const v = s.view;
-  if (!v) return EMPTY_OPPONENTS;
+function opponentEntriesForView(v: PlayerView): ReadonlyArray<PlayerViewEntry> {
   const cached = opponentEntriesCache.get(v);
   if (cached) return cached;
   const result = v.players.filter((p) => p.id !== v.self);
   opponentEntriesCache.set(v, result);
   return result;
+}
+
+export function selectOpponentEntries(s: GameStore): ReadonlyArray<PlayerViewEntry> {
+  const v = s.view;
+  if (!v) return EMPTY_OPPONENTS;
+  return opponentEntriesForView(v);
+}
+
+export function selectOpponentEntriesDisplay(s: GameStore): ReadonlyArray<PlayerViewEntry> {
+  const v = resolveDisplayView(s);
+  if (!v) return EMPTY_OPPONENTS;
+  return opponentEntriesForView(v);
 }
 
 // ─── Action-bar selectors ─────────────────────────────────────────────────────
@@ -363,7 +394,7 @@ export function selectDeckCount(s: GameStore): number {
 }
 
 export function selectDrawnCardId(s: GameStore): string | null {
-  return s.view?.drawnCardId ?? null;
+  return resolveDisplayView(s)?.drawnCardId ?? null;
 }
 
 // ─── UI state selectors ───────────────────────────────────────────────────────
@@ -411,4 +442,103 @@ export function selectPlayers(s: GameStore): ReadonlyArray<PlayerViewEntry> {
 
 export function selectVersion(s: GameStore): number {
   return s.version;
+}
+
+// ─── Flight animation selectors ───────────────────────────────────────────────
+
+export function selectIsAnimating(s: GameStore): boolean {
+  return s.animQueue.pending.length > 0;
+}
+
+export function selectActiveFlights(s: GameStore) {
+  return s.flightQueue.flights;
+}
+
+const EMPTY_DEST_KEYS: ReadonlySet<string> = new Set();
+const EMPTY_SHAKE_SLOTS: readonly number[] = [];
+const destKeysByFlights = new WeakMap<ReadonlyArray<Flight>, ReadonlySet<string>>();
+const sourceKeysByFlights = new WeakMap<ReadonlyArray<Flight>, ReadonlySet<string>>();
+const shakeSlotsByBatch = new WeakMap<
+  ReadonlyArray<GameEvent>,
+  Map<PlayerId, ReadonlyArray<number>>
+>();
+
+/** Stable empty set / arrays — required for useSyncExternalStore referential equality. */
+export function selectDestinationAnchorKeys(s: GameStore): ReadonlySet<string> {
+  const flights = s.flightQueue.flights;
+  if (flights.length === 0) return EMPTY_DEST_KEYS;
+  const cached = destKeysByFlights.get(flights);
+  if (cached) return cached;
+  const keys = destinationKeysFromFlights(flights);
+  destKeysByFlights.set(flights, keys);
+  return keys;
+}
+
+const EMPTY_SOURCE_KEYS: ReadonlySet<string> = new Set();
+
+export function selectSourceAnchorKeys(s: GameStore): ReadonlySet<string> {
+  const flights = s.flightQueue.flights;
+  if (flights.length === 0) return EMPTY_SOURCE_KEYS;
+  const cached = sourceKeysByFlights.get(flights);
+  if (cached) return cached;
+  const keys = sourceKeysFromFlights(flights);
+  sourceKeysByFlights.set(flights, keys);
+  return keys;
+}
+
+/** Event batch currently being animated (front of queue). */
+export function selectCurrentEventBatch(s: GameStore): ReadonlyArray<GameEvent> {
+  return s.animQueue.pending[0] ?? [];
+}
+
+/** Hand slot indices that should shake for `playerId` in the active batch. */
+export function selectMatchFailedShakeSlots(
+  s: GameStore,
+  playerId: PlayerId,
+): ReadonlyArray<number> {
+  const batch = s.animQueue.pending[0];
+  if (!batch) return EMPTY_SHAKE_SLOTS;
+
+  let byPlayer = shakeSlotsByBatch.get(batch);
+  if (!byPlayer) {
+    byPlayer = new Map();
+    shakeSlotsByBatch.set(batch, byPlayer);
+  }
+  const cached = byPlayer.get(playerId);
+  if (cached) return cached;
+
+  const indices: number[] = [];
+  for (const event of batch) {
+    if (event.type === 'match_failed' && event.playerId === playerId) {
+      indices.push(...event.slotIndices);
+    }
+  }
+  const result = indices.length === 0 ? EMPTY_SHAKE_SLOTS : indices;
+  byPlayer.set(playerId, result);
+  return result;
+}
+
+const EMPTY_SPOTLIGHT_KEYS: ReadonlySet<string> = new Set();
+const EMPTY_ACTOR_FOCUS: ReadonlySet<string> = new Set();
+
+export function selectSpotlightAnchorKeys(s: GameStore): ReadonlySet<string> {
+  const keys = s.choreography.spotlightKeys;
+  return keys.size === 0 ? EMPTY_SPOTLIGHT_KEYS : keys;
+}
+
+export function selectActorFocusPlayerIds(s: GameStore): ReadonlySet<string> {
+  const ids = s.choreography.actorFocusPlayerIds;
+  return ids.size === 0 ? EMPTY_ACTOR_FOCUS : ids;
+}
+
+export function selectDiscardPulse(s: GameStore): boolean {
+  return s.choreography.discardPulse;
+}
+
+export function selectIsTableDimmed(s: GameStore): boolean {
+  return s.choreography.tableDimmed;
+}
+
+export function selectSlotIsSpotlighted(s: GameStore, id: AnchorId): boolean {
+  return s.choreography.spotlightKeys.has(anchorKey(id));
 }

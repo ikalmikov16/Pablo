@@ -5,6 +5,45 @@
 import { describe, expect, it } from 'bun:test';
 import { defaultCardTheme, midnightCardTheme } from '../../design/cardTheme';
 import { isRedSuit, rankLabel, suitColor, suitGlyph } from './internal/cardHelpers';
+import { radiusFor, sizesSnapshot } from './internal/cardSizes';
+
+describe('proportional card sizing', () => {
+  it('radiusFor clamps and scales at 44 / 88 / 220 px', () => {
+    expect(radiusFor(44)).toBe(4);
+    expect(radiusFor(88)).toBe(7);
+    expect(radiusFor(220)).toBe(17);
+  });
+
+  it('sizesSnapshot matches reference table', () => {
+    expect(sizesSnapshot(44)).toEqual({
+      width: 44,
+      radius: 4,
+      rank: 8,
+      suitSmall: 5,
+      centerSuit: 20,
+      borderStroke: 1,
+      backInset: 4,
+    });
+    expect(sizesSnapshot(88)).toEqual({
+      width: 88,
+      radius: 7,
+      rank: 16,
+      suitSmall: 11,
+      centerSuit: 40,
+      borderStroke: 1,
+      backInset: 7,
+    });
+    expect(sizesSnapshot(220)).toEqual({
+      width: 220,
+      radius: 17,
+      rank: 40,
+      suitSmall: 26,
+      centerSuit: 99,
+      borderStroke: 3,
+      backInset: 17,
+    });
+  });
+});
 
 describe('suitGlyph', () => {
   it('returns ♥ for hearts', () => expect(suitGlyph('hearts')).toBe('♥'));

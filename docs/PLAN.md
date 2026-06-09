@@ -4,7 +4,7 @@ Living plan. Agents MUST update this after meaningful changes — move items bet
 
 ## Current phase
 
-**Phase 5 — Supabase backend** is implementation-complete on `phase-5-supabase` (2026-05-18) and awaiting user merge. Self-review pass on the same branch fixed: (a) `room_members` RLS infinite-recursion via a `is_room_member()` SECURITY DEFINER helper, (b) information disclosure where `not_found` leaked game existence to non-members, (c) `getEventsSince` event-stream race that could cause duplicate event fetches. **Phase 4** (single-player vs bot) is squash-merged to `main` (2026-05-18).
+**Phase 6 — Multiplayer wiring** is next up (not started). **Phase 4.5 — UX overhaul + card clarity** (`phase-4-5-card-clarity`) squash-merged to `main` (2026-06-09): poker-table layout, flying-card choreography (Packages B / B.1 / C), display-view latch + proportional card art (Package D), deck→drawn shared transition (Pass 5), and `.cursor/rules/debugging.mdc`. Phases 4 (single-player vs bot) and 5 (Supabase backend) are on `main`.
 
 ---
 
@@ -24,7 +24,7 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
 
 - ✅ Bun workspace structure (`apps/`, `packages/`, `supabase/`, `docs/`).
 - ✅ `AGENTS.md`, `docs/PLAN.md`, `docs/GAME_LOGIC.md`, `docs/SCHEMA.md`.
-- ✅ `.cursor/rules/` × 6 (engine, supabase, ui, i18n, design, cards) scoped via globs.
+- ✅ `.cursor/rules/` × 7 (engine, supabase, ui, i18n, design, cards, debugging) scoped via globs.
 - ✅ Git initialized, pushed to `git@github.com:ikalmikov16/Pablo.git`.
 - ✅ Bun + Supabase CLI installed.
 - ✅ Engine package: types (Card, Move, GameEvent, GameState, MatchState, GameRules, SpecialPower, CardValueOverride, PlayerView, RoundScore), stub implementations, 6 failing contract tests.
@@ -69,7 +69,7 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
   - Zustand per-game store + `GameStoreProvider`; PowerFlow for J/Q/K resolution.
   - Pre–Phase 5 audit on branch: doc sync (`GAME_LOGIC`, `PLAN`, `SCHEMA` PabloClient section), flat `error.*` i18n for all move/transport codes, game tokens for rgba/magic timings.
   - `bun run check` clean; implementation plan at `docs/plans/phase-4-singleplayer.md`.
-- ✅ **Phase 5 — Supabase backend** (`phase-5-supabase` branch, implementation complete 2026-05-18).
+- ✅ **Phase 5 — Supabase backend** (`phase-5-supabase` squash-merged to `main`, 2026-05-18).
   - 8 migrations: `profiles`, `rooms`, `room_members`, `games`, `game_moves`, `game_events`, `create_room()`, `apply_move_atomic()`.
   - 6 edge functions: `joinRoom`, `leaveRoom`, `startGame`, `applyMove`, `getPlayerView`, `getEventsSince`.
   - Shared helpers: `respond`, `auth`, `supabaseAdmin`, `supabaseAnon`, `redact`, `broadcast`.
@@ -77,11 +77,19 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
   - Per-player event redaction for `peeked.cardId` privacy (`redact.ts` + unit tests).
   - Integration test gated behind `PABLO_RUN_INTEGRATION=1` (`tests/integration/supabase.test.ts`).
   - `.env.example` files for mobile and edge functions; `.gitignore` updated.
-  - `bun run check` clean; branch pushed, awaiting user merge approval.
+  - `bun run check` clean.
+- ✅ **Phase 4.5 — UX overhaul + card clarity** (`phase-4-5-card-clarity` squash-merged to `main`, 2026-06-09).
+  - Package A: poker-table `TableLayout`, `OpponentSeat`, `seatLayout` helper; opponent peek leak fixed.
+  - Package B / B.1: `FlyingCardLayer`, flight planner, promote-first view, staged swap/discard choreography.
+  - Package C: motion vocabulary (`feedback/motion.ts`, lift/shadow/stagger).
+  - Package D: display-view latch, slot ghosts, proportional `PlayingCard` art, opponent `LinearTransition` reflow.
+  - Pass 5: uniform flight scale, deck→drawn hero spring, `drawnBandH` aspect fix.
+  - `.cursor/rules/debugging.mdc` — deterministic root-cause debugging loop.
+  - Plans: `docs/plans/phase-4-5-*.md`; `bun run check` clean.
 
 ## In progress
 
-- 🟡 **Phase 6 — Multiplayer wiring** (next up, not started).
+_(none — Phase 6 is next)_
 
 ---
 
@@ -323,7 +331,10 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
 | 2026-05-18 | Phase 4 — `addBotsToRoom` on `MockClient` extension type only, not on `PabloClient`                                           | Phase 6 rooms are joined by human players; bots are a single-player-mode concept. The asymmetry is explicit; `createRealClient()` doesn't implement it.                                                                                                                                                                                                                                     |
 | 2026-05-18 | Phase 4 — `subscribeGameEvents` added to `PabloClient`                                                                        | Events drive animation; the mock fires them in-process; the real client will broadcast via a Supabase Realtime channel. Adding it now means Phase 6 only needs to fill in the broadcast plumbing.                                                                                                                                                                                           |
 | 2026-05-18 | Phase 4 — Bot heuristic reads `PlayerView` only, not `GameState`                                                              | Honesty contract: bots must not cheat. The `bot.ts` module only receives a `PlayerView` from the bot scheduler; `GameState` is never passed in. Lint and types enforce the boundary.                                                                                                                                                                                                        |
-| 2026-05-18 | Phase 4 — Animation drain is a 300 ms setTimeout per batch (Phase 7 gets Reanimated choreography)                             | Getting the game playable is higher priority than polished animations at this stage. The async animator contract means the Phase 7 upgrade is a drop-in handler swap.                                                                                                                                                                                                                       |
+| 2026-05-18 | Phase 4 — Animation drain is a 300 ms setTimeout per batch (Phase 7 gets Reanimated choreography)                             | Getting the game playable is higher priority than polished animations at this stage. The async animator contract means the Phase 7 upgrade is a drop-in handler swap. **Superseded by Phase 4.5 Package B** (Reanimated flights + promote-first view).                                                                                                                                      |
+| 2026-05-18 | Phase 4.5 Package B — promote-first view + snapshotted anchor flights                                                         | `receiveView` updates `view` immediately; `planFlights` runs synchronously in `enqueueEvents` using `measureInWindow` rects captured at plan time. `selectIsAnimating` gates input. See `docs/plans/phase-4-5-flying-cards.md`.                                                                                                                                                             |
+| 2026-05-18 | Phase 4.5 Package B.1 — staged swap/discard choreography + delayed toasts                                                     | `FlightPlan` adds `cues` / `toasts` / `totalDurationMs`; opponent swaps get actor focus, slot spotlight, readable discard leg, discard pulse, and table dim. Input gating uses `animQueue.pending` (batch hold), not in-flight card count. See `docs/plans/phase-4-5-flying-cards.md` § Package B.1.                                                                                        |
+| 2026-05-18 | Phase 4.5 Package C — animation polish (motion vocabulary)                                                                    | `tokens.game.motion` + `feedback/motion.ts`; springs on overlays/cues; flight lift/shadow/flip; `applyFlightStagger` + inter-batch `breath`. See `docs/plans/phase-4-5-animation-polish.md`.                                                                                                                                                                                                |
 | 2026-05-18 | Phase 4 — Bot Pablo threshold: 8 pts estimated total for off-turn Pablo; 5 pts + 1/30 chance for on-turn Pablo                | Calibrated for a 4-card hand with catalog-average prior (~6.5/card). Ensures bots call Pablo occasionally without being trivially predictable. Revisit with playtesting.                                                                                                                                                                                                                    |
 | 2026-05-18 | Phase 4 — Per-game Zustand store via context provider, not a global singleton                                                 | A singleton would retain state between games; context mounts/unmounts with the route so teardown is free.                                                                                                                                                                                                                                                                                   |
 | 2026-05-18 | Phase 4 — Bot names: Cabo Cassette, Cambia, Pablito                                                                           | Thematic names that fit the aesthetic without being generic ("Bot 1"). Pablito is a deliberate reference to the game name.                                                                                                                                                                                                                                                                  |
@@ -350,6 +361,10 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
 | 2026-05-18 | Tried TypeScript 6.0; rolled back to ~5.9 because Expo SDK 55's `expo install --fix` actively downgrades it                   | Expo CLI declares TS 6 incompatible (pins to `~5.9.2`). Living with the downgrade noise on every install is worse than waiting for Expo SDK 56. Revisit then.                                                                                                                                                                                                                               |
 | 2026-05-18 | Added `"types": ["bun"]` to `apps/mobile/tsconfig.json` and `@types/bun` to `apps/mobile/package.json` devDeps                | Expo's tsconfig.base relies on auto-discovery of ambient `@types/*`, which the TS-6 upgrade attempt exposed as fragile (bun:test stopped resolving). Making the dependency explicit is portable across TS versions.                                                                                                                                                                         |
 | 2026-05-18 | Context7 MCP server wired in `.cursor/mcp.json` (project-level)                                                               | Gives every agent in the repo on-demand versioned docs for the libraries we use, so version-specific code stays accurate without manual indexing per machine. Free tier — add a `CONTEXT7_API_KEY` header to bypass rate limits when needed.                                                                                                                                                |
+| 2026-05-18 | Phase 4.5 Package D — card clarity (`phase-4-5-card-clarity`)                                                                 | Flying cards render at max(source, destination) size and scale down (sharp Skia); proportional `cardSizes` helpers; `displayView` latch for hand grids + DrawFlow timing only (deck/discard stay live on `view`); slot ghost outlines + `selectSourceAnchorKeys`; opponent `LinearTransition` on reflow. See `docs/plans/phase-4-5-card-clarity.md`.                                        |
+| 2026-06-09 | Phase 4.5 Package D Pass 5 — deck↔drawn shared transition + uniform flight scale                                              | Flights animate one uniform `scale` (no aspect skew); removed orphaned `discardReadableScale`; `DrawnCardHero` springs in from deck size via `springFor('settle')`; `drawnBandH` matches deck card height; `flightMotionIntent` `toAnchor==='drawn'` ⇒ `carry`. See `docs/plans/phase-4-5-card-clarity.md` § Pass 5.                                                                        |
+| 2026-06-09 | `.cursor/rules/debugging.mdc` — deterministic root-cause debugging methodology                                                | Scoped to `packages/engine/**`, `supabase/functions/**`, `**/*.test.ts`. Collapse bugs into failing pure engine tests before changing code; Pablo-specific gotcha checklist (stale `engine.bundle.js`, engine-throw = impossible bug, hidden-card leaks, version races, optimistic/authoritative divergence).                                                                               |
+| 2026-06-09 | Phase 4.5 squash-merged to `main` on `phase-4-5-card-clarity`                                                                 | User-authorised merge after on-device pass of deck→drawn transition. Linear history via squash; branch can be deleted. Phase 6 (multiplayer wiring) is next.                                                                                                                                                                                                                                |
 
 ## Proposed decisions (need user input)
 

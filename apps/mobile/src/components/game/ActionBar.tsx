@@ -13,8 +13,8 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { tokens } from '../../design/tokens';
 import { t } from '../../i18n';
-import { useGameStoreShallow } from '../../store/provider';
-import { selectActionBarItems } from '../../store/selectors';
+import { useGameStore, useGameStoreShallow } from '../../store/provider';
+import { selectActionBarItems, selectIsAnimating } from '../../store/selectors';
 import type { ActionBarItem } from '../../store/selectors';
 
 type Props = {
@@ -37,30 +37,39 @@ const LABELS: Readonly<Record<string, string>> = {
 
 export function ActionBar({ onCompositeAction, onDispatchMove }: Props) {
   const items = useGameStoreShallow(selectActionBarItems);
+  const isAnimating = useGameStore(selectIsAnimating);
 
   if (items.length === 0) return null;
 
   return (
     <View style={styles.bar}>
-      {items.map((item) => (
-        <TouchableOpacity
-          key={item.id}
-          style={[styles.btn, !item.enabled && styles.btnDisabled]}
-          disabled={!item.enabled}
-          activeOpacity={0.75}
-          onPress={() => {
-            if (item.move) {
-              onDispatchMove(item);
-            } else {
-              onCompositeAction(item.id);
-            }
-          }}
-        >
-          <Text style={[styles.btnText, !item.enabled && styles.btnTextDisabled]}>
-            {LABELS[item.id] ?? item.id}
-          </Text>
-        </TouchableOpacity>
-      ))}
+      {items.map((item) => {
+        const isPablo = item.id === 'call_pablo';
+        return (
+          <TouchableOpacity
+            key={item.id}
+            style={[
+              styles.btn,
+              isPablo && styles.btnPablo,
+              isPablo && !item.enabled && styles.btnPabloDisabled,
+              !isPablo && !item.enabled && styles.btnDisabled,
+            ]}
+            disabled={!item.enabled || isAnimating}
+            activeOpacity={0.75}
+            onPress={() => {
+              if (item.move) {
+                onDispatchMove(item);
+              } else {
+                onCompositeAction(item.id);
+              }
+            }}
+          >
+            <Text style={[styles.btnText, !item.enabled && !isPablo && styles.btnTextDisabled]}>
+              {LABELS[item.id] ?? item.id}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -84,6 +93,12 @@ const styles = StyleSheet.create({
   },
   btnDisabled: {
     backgroundColor: tokens.color.border.subtle,
+  },
+  btnPablo: {
+    backgroundColor: tokens.game.accent.pabloOnTurn,
+  },
+  btnPabloDisabled: {
+    backgroundColor: tokens.game.accent.pabloOffTurn,
   },
   btnText: {
     color: tokens.color.text.inverse,

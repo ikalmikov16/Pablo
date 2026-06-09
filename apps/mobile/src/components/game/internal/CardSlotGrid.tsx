@@ -29,9 +29,8 @@ import { tokens } from '../../../design/tokens';
 import { PlayingCard } from '../../cards/PlayingCard';
 
 const CARD_ASPECT = 1.46; // h/w
-const GAP = tokens.space.sm;
 /** Cap card width so a 4-card grid is a compact 2×2 rather than feature-wall. */
-const DEFAULT_MAX_CARD_WIDTH = 96;
+const DEFAULT_MAX_CARD_WIDTH = tokens.game.size.ownCardMax;
 /** Placeholder used when no card data is available; the back is shown so
  *  suit/rank values never leak. */
 const FACE_DOWN_CARD: Card = { suit: 'spades', rank: 1 };
@@ -47,8 +46,21 @@ export type CardSlotGridProps = {
   readonly slots: ReadonlyArray<CardSlot>;
   /** Width budget for the whole grid (the parent container width). */
   readonly gridWidth: number;
-  /** Optional max card width; defaults to 96. */
+  /** Optional max card width; defaults to `tokens.game.size.ownCardMax`. */
   readonly maxCardWidth?: number;
+  /** When set, pins card width instead of deriving it from `gridWidth`. */
+  readonly cardWidth?: number;
+  /** Gap between cards; defaults to `tokens.space.sm`. */
+  readonly gap?: number;
+  /**
+   * Optional wrapper around each slot's `PlayingCard`. Used by `OwnHandGrid`
+   * for `LinearTransition` and selection chrome.
+   */
+  readonly slotWrapper?: (
+    slot: CardSlot,
+    children: React.ReactNode,
+    size: { readonly width: number; readonly height: number },
+  ) => React.ReactNode;
   /**
    * Decide whether a slot is shown face-up. Defaults to always face-down,
    * which is the correct behaviour for every "pick a slot" surface in v1
@@ -81,14 +93,17 @@ export function CardSlotGrid({
   slots,
   gridWidth,
   maxCardWidth = DEFAULT_MAX_CARD_WIDTH,
+  cardWidth: cardWidthProp,
+  gap = tokens.space.sm,
   faceUpFor,
   onTap,
   legalIndices,
   selectedIndices,
+  slotWrapper,
 }: CardSlotGridProps) {
   const cols = colsFor(slots.length);
-  const availableCardWidth = Math.floor((gridWidth - (cols + 1) * GAP) / cols);
-  const cardWidth = Math.max(1, Math.min(availableCardWidth, maxCardWidth));
+  const availableCardWidth = Math.floor((gridWidth - (cols - 1) * gap) / cols);
+  const cardWidth = cardWidthProp ?? Math.max(1, Math.min(availableCardWidth, maxCardWidth));
   const cardHeight = Math.floor(cardWidth * CARD_ASPECT);
   const rows = chunk(slots, cols);
 
@@ -97,33 +112,44 @@ export function CardSlotGrid({
     selectedIndices !== undefined && selectedIndices.includes(idx);
 
   return (
-    <View style={styles.grid}>
+    <View style={[styles.grid, { gap }]}>
       {rows.map((row, rowIdx) => (
-        <View key={rowIdx} style={styles.row}>
+        <View key={rowIdx} style={[styles.row, { gap }]}>
           {row.map((slot) => {
             const legal = isLegal(slot.index);
             const selected = isSelected(slot.index);
             const faceUp = faceUpFor ? faceUpFor(slot) : false;
             const cardData = slot.card ?? FACE_DOWN_CARD;
+            const size = { width: cardWidth, height: cardHeight };
+            const cardNode = (
+              <PlayingCard
+                card={cardData}
+                faceUp={faceUp}
+                theme={defaultCardTheme}
+                size={size}
+                draggable={false}
+                flippable={false}
+                onTap={onTap && legal ? () => onTap(slot) : undefined}
+              />
+            );
+            if (slotWrapper) {
+              return (
+                <React.Fragment key={`slot-${slot.index}`}>
+                  {slotWrapper(slot, cardNode, size)}
+                </React.Fragment>
+              );
+            }
             return (
               <View
                 key={`slot-${slot.index}`}
                 style={[
                   styles.slot,
-                  { width: cardWidth, height: cardHeight },
+                  size,
                   selected && styles.slotSelected,
                   !legal && styles.slotDimmed,
                 ]}
               >
-                <PlayingCard
-                  card={cardData}
-                  faceUp={faceUp}
-                  theme={defaultCardTheme}
-                  size={{ width: cardWidth, height: cardHeight }}
-                  draggable={false}
-                  flippable={false}
-                  onTap={onTap && legal ? () => onTap(slot) : undefined}
-                />
+                {cardNode}
               </View>
             );
           })}
@@ -136,11 +162,9 @@ export function CardSlotGrid({
 const styles = StyleSheet.create({
   grid: {
     alignSelf: 'center',
-    gap: GAP,
   },
   row: {
     flexDirection: 'row',
-    gap: GAP,
     justifyContent: 'center',
   },
   slot: {

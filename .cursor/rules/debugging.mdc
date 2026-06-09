@@ -1,0 +1,35 @@
+---
+description: How to debug Pablo — deterministic, root-cause-first, lowest-layer
+globs: packages/engine/**,supabase/functions/**,**/*.test.ts
+alwaysApply: false
+---
+
+# Debugging Pablo
+
+Pablo is built to be debuggable: the engine is **pure + deterministic** (`applyMove(state, move) → { ok, state, events }`, seeded PRNG, no `Date.now`/`Math.random`), every authoritative move is persisted in `game_moves`, and the system has three clean layers (engine → edge function → client). Lean on all three.
+
+**Core principle: collapse the bug into a failing deterministic engine test before changing any code.** A symptom seen in the UI usually has its root cause in the engine, and the fix belongs at the lowest layer that's wrong.
+
+## The loop
+
+1. **Classify the layer.** Where does truth diverge?
+   - **Engine** — wrong `state`/`events`/`legalMoves` for given inputs. Reproducible as a pure test, no mocks.
+   - **Edge** — auth, `idempotencyKey`, `expectedVersion`/`version_mismatch`, `apply_move_atomic`, RLS, redaction/leaks.
+   - **Client** — selector logic, or optimistic prediction diverging from authoritative state, or UI/animation only.
+2. **Reproduce deterministically.** Replay the seed + move sequence (from `game_moves` or the scenario setup) through `applyMove` in a `packages/engine/src/*.test.ts`. A red test = bug understood.
+3. **Root-cause backward.** Trace from where it's observable back to the original trigger; fix at the origin. Add a cheap defense-in-depth guard at the symptom point if it helps.
+4. **Verify + keep the repro.** Run `bun run check`. The reproduction test stays as a regression test (bug fix = new test).
+
+## Pablo-specific gotchas (in order of frequency)
+
+- **Edge misbehaves but engine tests pass → stale `engine.bundle.js`.** Deno imports the bundle, not the TS source. Run `bun run build:engine-bundle` first.
+- **An engine function *throws* instead of returning `{ ok: false, error }`** = an "impossible" bug, never user error. Expected failures are data by design — treat any throw as a high-priority logic defect.
+- **Hidden cards visible to the wrong player** → `computePlayerView` or `supabase/functions/_shared/redact.ts`, never the client. The client only sees a projection.
+- **"Passes in a test, fails against the DB"** → RLS policy or `apply_move_atomic` / version race, not the engine.
+- **Optimistic UI ≠ authoritative result** → client/engine version skew or a non-deterministic input leaking into the client. Same seed + same moves must yield identical state on both sides.
+
+## Tooling
+
+- Single case: `bun test packages/engine/src/applyMove.test.ts -t "case name"`.
+- Edge functions already `console.error` on engine throws and RPC errors — read those first for edge bugs.
+- Prefer the deterministic replay over a step-through debugger; it's faster and leaves a permanent regression test.

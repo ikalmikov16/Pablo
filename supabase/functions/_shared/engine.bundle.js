@@ -913,10 +913,16 @@ function computePlayerView(state, playerId) {
     const hand = state.hands[id] ?? [];
     const theirKnowledge = myKnowledge[id] ?? {};
     const knownCards = {};
-    for (const [indexStr, cardId2] of Object.entries(theirKnowledge)) {
-      const idx = Number(indexStr);
-      if (hand[idx] === cardId2) {
+    if (state.status === "ended") {
+      hand.forEach((cardId2, idx) => {
         knownCards[idx] = cardId2;
+      });
+    } else {
+      for (const [indexStr, cardId2] of Object.entries(theirKnowledge)) {
+        const idx = Number(indexStr);
+        if (hand[idx] === cardId2) {
+          knownCards[idx] = cardId2;
+        }
       }
     }
     return {

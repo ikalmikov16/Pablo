@@ -20,14 +20,17 @@ type Rng = ReturnType<typeof makeRng>;
 import type { Scheduler } from './clock';
 import type { BotContext } from './bot';
 import { decide, estimateOwnTotal } from './bot';
+import { tokens } from '../../design/tokens';
 import type { GameRecord } from './viewStore';
 import { applyAndFanout } from './viewStore';
 import { isBotId } from './room';
 
-const ON_TURN_DELAY_MS = 420;
-const OFF_TURN_PABLO_BASE_MS = 1000;
-const OFF_TURN_PABLO_JITTER_MS = 400;
-const PEEK_DELAY_MS = 200;
+const {
+  botOnTurnDelayMs: ON_TURN_DELAY_MS,
+  botPeekDelayMs: PEEK_DELAY_MS,
+  botOffTurnPabloBaseMs: OFF_TURN_PABLO_BASE_MS,
+  botOffTurnPabloJitterMs: OFF_TURN_PABLO_JITTER_MS,
+} = tokens.game.duration;
 
 export type BotRngs = Readonly<Record<PlayerId, Rng>>;
 

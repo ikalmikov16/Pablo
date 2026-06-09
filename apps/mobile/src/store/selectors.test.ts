@@ -14,6 +14,9 @@ import {
   selectPowerOverlayVisible,
   selectSelf,
   selectStatus,
+  selectDestinationAnchorKeys,
+  selectIsAnimating,
+  selectSourceAnchorKeys,
   selectVersion,
 } from './selectors';
 import type { GameStore } from './gameStore';
@@ -42,8 +45,9 @@ function advanceToPlaying() {
 function makeStoreSnapshot(overrides?: Partial<GameStore>): GameStore {
   const base: GameStore = {
     view: null,
-    pendingView: null,
     version: 0,
+    displayView: null,
+    displayVersion: 0,
     ui: {
       selection: { kind: 'none' },
       dragInFlight: false,
@@ -55,10 +59,18 @@ function makeStoreSnapshot(overrides?: Partial<GameStore>): GameStore {
       toast: null,
     },
     animQueue: { pending: [] },
+    flightQueue: { activeBatchId: null, flights: [], cues: [] },
+    choreography: {
+      spotlightKeys: new Set(),
+      actorFocusPlayerIds: new Set(),
+      discardPulse: false,
+      tableDimmed: false,
+    },
     receiveView: () => {},
-    promoteView: () => {},
     enqueueEvents: () => {},
     dequeueEvents: () => {},
+    removeFlight: () => {},
+    disposeFlightTimers: () => {},
     setSelection: () => {},
     clearSelection: () => {},
     setDragInFlight: () => {},
@@ -313,6 +325,158 @@ describe('selector reference stability', () => {
     const s1 = makeStoreSnapshot();
     const s2 = makeStoreSnapshot();
     expect(selectPlayers(s1)).toBe(selectPlayers(s2));
+  });
+});
+
+describe('selectDestinationAnchorKeys', () => {
+  test('returns the same Set reference for the same flights array', () => {
+    const flights = [
+      {
+        id: 'f1',
+        batchId: 'batch-1',
+        fromAnchor: { kind: 'deck' as const },
+        toAnchor: { kind: 'drawn' as const },
+        fromCoords: { x: 0, y: 0, w: 10, h: 14 },
+        toCoords: { x: 5, y: 5, w: 10, h: 14 },
+        cardId: null,
+        faceUp: false,
+        durationMs: 350,
+        delayMs: 0,
+        emphasis: 'normal' as const,
+        zRank: 0,
+        liftEnabled: true,
+        flipMidFlight: false,
+      },
+    ];
+    const s = makeStoreSnapshot({
+      flightQueue: { activeBatchId: 'batch-1', flights, cues: [] },
+    });
+    expect(selectDestinationAnchorKeys(s)).toBe(selectDestinationAnchorKeys(s));
+  });
+
+  test('returns the same empty Set when no flights', () => {
+    const s1 = makeStoreSnapshot();
+    const s2 = makeStoreSnapshot();
+    expect(selectDestinationAnchorKeys(s1)).toBe(selectDestinationAnchorKeys(s2));
+  });
+});
+
+describe('selectSourceAnchorKeys', () => {
+  test('returns the same Set reference for the same flights array', () => {
+    const flights = [
+      {
+        id: 'f1',
+        batchId: 'batch-1',
+        fromAnchor: { kind: 'ownSlot' as const, index: 1 },
+        toAnchor: { kind: 'discard' as const },
+        fromCoords: { x: 0, y: 0, w: 10, h: 14 },
+        toCoords: { x: 5, y: 5, w: 10, h: 14 },
+        cardId: 'c1',
+        faceUp: true,
+        durationMs: 350,
+        delayMs: 0,
+        emphasis: 'normal' as const,
+        zRank: 0,
+        liftEnabled: true,
+        flipMidFlight: false,
+      },
+    ];
+    const s = makeStoreSnapshot({
+      flightQueue: { activeBatchId: 'batch-1', flights, cues: [] },
+    });
+    expect(selectSourceAnchorKeys(s)).toBe(selectSourceAnchorKeys(s));
+  });
+
+  test('returns the same empty Set when no flights', () => {
+    const s1 = makeStoreSnapshot();
+    const s2 = makeStoreSnapshot();
+    expect(selectSourceAnchorKeys(s1)).toBe(selectSourceAnchorKeys(s2));
+  });
+
+  test('includes only hand-slot sources', () => {
+    const flights = [
+      {
+        id: 'f-deck',
+        batchId: 'batch-1',
+        fromAnchor: { kind: 'deck' as const },
+        toAnchor: { kind: 'drawn' as const },
+        fromCoords: { x: 0, y: 0, w: 10, h: 14 },
+        toCoords: { x: 5, y: 5, w: 10, h: 14 },
+        cardId: null,
+        faceUp: false,
+        durationMs: 350,
+        delayMs: 0,
+        emphasis: 'normal' as const,
+        zRank: 0,
+        liftEnabled: true,
+        flipMidFlight: false,
+      },
+      {
+        id: 'f-slot',
+        batchId: 'batch-1',
+        fromAnchor: { kind: 'opponentSlot' as const, playerId: BOT, index: 2 },
+        toAnchor: { kind: 'discard' as const },
+        fromCoords: { x: 0, y: 0, w: 10, h: 14 },
+        toCoords: { x: 5, y: 5, w: 10, h: 14 },
+        cardId: 'c1',
+        faceUp: false,
+        durationMs: 350,
+        delayMs: 0,
+        emphasis: 'normal' as const,
+        zRank: 1,
+        liftEnabled: true,
+        flipMidFlight: false,
+      },
+    ];
+    const s = makeStoreSnapshot({
+      flightQueue: { activeBatchId: 'batch-1', flights, cues: [] },
+    });
+    const keys = selectSourceAnchorKeys(s);
+    expect(keys.has('opp:bot:1:2')).toBe(true);
+    expect(keys.has('deck')).toBe(false);
+    expect(keys.size).toBe(1);
+  });
+});
+
+describe('selectIsAnimating', () => {
+  test('is false when idle', () => {
+    const s = makeStoreSnapshot();
+    expect(selectIsAnimating(s)).toBe(false);
+  });
+
+  test('is false when only flights are active but the event queue is idle', () => {
+    const s = makeStoreSnapshot({
+      flightQueue: {
+        activeBatchId: 'batch-1',
+        flights: [
+          {
+            id: 'f1',
+            batchId: 'batch-1',
+            fromAnchor: { kind: 'deck' },
+            toAnchor: { kind: 'drawn' },
+            fromCoords: { x: 0, y: 0, w: 10, h: 14 },
+            toCoords: { x: 5, y: 5, w: 10, h: 14 },
+            cardId: null,
+            faceUp: false,
+            durationMs: 350,
+            delayMs: 0,
+            emphasis: 'normal',
+            zRank: 0,
+            liftEnabled: true,
+            flipMidFlight: false,
+          },
+        ],
+        cues: [],
+      },
+    });
+    expect(selectIsAnimating(s)).toBe(false);
+  });
+
+  test('is true when event batches are queued', () => {
+    const s = makeStoreSnapshot({
+      animQueue: { pending: [[{ type: 'turn_ended', nextPlayer: 'a' }]] },
+    });
+    expect(selectIsAnimating(s)).toBe(true);
   });
 });
 

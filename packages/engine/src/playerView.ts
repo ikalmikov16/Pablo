@@ -5,7 +5,8 @@ import type { GameState, PlayerId, PlayerView, PlayerViewEntry } from './types';
  *
  * Hidden information:
  *  - The exact deck order and cards (only deckCount is returned).
- *  - Opponent hand cards that playerId has not peeked or learned via powers.
+ *  - Opponent hand cards that playerId has not peeked or learned via powers
+ *    (except when status === 'ended', when every hand is fully revealed).
  *  - Penalty cards are face-down even to their owner (no knownCards entry).
  *
  * Visible information:
@@ -27,14 +28,20 @@ export function computePlayerView(state: GameState, playerId: PlayerId): PlayerV
     const hand = state.hands[id] ?? [];
     const theirKnowledge = myKnowledge[id] ?? {};
 
-    // Include only knowledge entries where the cardId still matches the actual
-    // hand slot (guards against stale knowledge after swaps, slot reindexing,
-    // or penalty-card appends that shifted higher indices).
     const knownCards: Partial<Record<number, string>> = {};
-    for (const [indexStr, cardId] of Object.entries(theirKnowledge)) {
-      const idx = Number(indexStr);
-      if (hand[idx] === cardId) {
+    if (state.status === 'ended') {
+      hand.forEach((cardId, idx) => {
         knownCards[idx] = cardId;
+      });
+    } else {
+      // Include only knowledge entries where the cardId still matches the actual
+      // hand slot (guards against stale knowledge after swaps, slot reindexing,
+      // or penalty-card appends that shifted higher indices).
+      for (const [indexStr, cardId] of Object.entries(theirKnowledge)) {
+        const idx = Number(indexStr);
+        if (hand[idx] === cardId) {
+          knownCards[idx] = cardId;
+        }
       }
     }
 

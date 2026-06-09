@@ -97,6 +97,11 @@ export interface PabloClient {
    * order as the moves that produced them. The animation layer drains this
    * channel; the view subscription is the source of truth for state.
    *
+   * **Callback ordering (required for card-flight animations):** for each
+   * `applyMove`, implementations MUST invoke `subscribePlayerView` callbacks
+   * before `subscribeGameEvents` callbacks so the promoted view is available
+   * when the flight planner runs.
+   *
    * Phase 6 (realClient) delivers these via a Supabase Realtime broadcast
    * channel; the mock delivers them in-process.
    */

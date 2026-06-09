@@ -15,8 +15,12 @@ import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 
 import { tokens } from '../../../design/tokens';
 import { t } from '../../../i18n';
-import { useGameStoreShallow } from '../../../store/provider';
-import { selectMatchHandPairs, selectMyHandSlots } from '../../../store/selectors';
+import { useGameStore, useGameStoreShallow } from '../../../store/provider';
+import {
+  selectIsAnimating,
+  selectMatchHandPairs,
+  selectMyHandSlots,
+} from '../../../store/selectors';
 import { CardSlotGrid, type CardSlot } from '../internal/CardSlotGrid';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -30,6 +34,7 @@ type Props = {
 export function MatchHandFlow({ onConfirm, onCancel }: Props) {
   const slots = useGameStoreShallow(selectMyHandSlots);
   const legalPairs = useGameStoreShallow(selectMatchHandPairs);
+  const isAnimating = useGameStore(selectIsAnimating);
   const [picks, setPicks] = useState<ReadonlyArray<number>>([]);
 
   function toggle(idx: number) {
@@ -70,8 +75,8 @@ export function MatchHandFlow({ onConfirm, onCancel }: Props) {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.confirmBtn, !isLegalPair && styles.disabled]}
-            disabled={!isLegalPair}
-            onPress={() => picks.length === 2 && onConfirm(picks[0]!, picks[1]!)}
+            disabled={!isLegalPair || isAnimating}
+            onPress={() => !isAnimating && picks.length === 2 && onConfirm(picks[0]!, picks[1]!)}
             activeOpacity={0.8}
           >
             <Text style={styles.confirmText}>{t('game.action.matchHand')}</Text>
