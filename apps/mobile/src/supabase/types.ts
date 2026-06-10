@@ -17,10 +17,18 @@ export type Room = {
   readonly id: RoomId;
   readonly code: string;
   readonly hostId: PlayerId;
-  readonly status: 'waiting' | 'playing' | 'finished';
+  readonly status: 'waiting' | 'playing';
   readonly members: ReadonlyArray<PlayerId>;
   readonly maxPlayers: number;
   readonly rules: GameRules;
+  /** Set while a live game is linked to this room (RLS-readable). */
+  readonly currentGameId: GameId | null;
+};
+
+export type ActiveSession = {
+  readonly roomId: RoomId;
+  readonly gameId: GameId;
+  readonly mode: 'online';
 };
 
 /**
@@ -67,6 +75,15 @@ export interface PabloClient {
 
   /** Host starts the game; deals first round. */
   startGame(opts: { roomId: RoomId }): Promise<ClientResult<GameId>>;
+
+  /** Host returns a finished room to the lobby for another round. */
+  returnToLobby(opts: { roomId: RoomId }): Promise<ClientResult<void>>;
+
+  /**
+   * Resolve an in-progress online session for this player, if any.
+   * Used on cold launch for reconnection.
+   */
+  getActiveSession(): Promise<ClientResult<ActiveSession | null>>;
 
   /** Submit a move. Server validates via engine; rejects illegal moves. */
   applyMove(opts: {

@@ -48,5 +48,6 @@ export function makeRoom(opts: {
     members: [opts.hostId],
     maxPlayers: opts.maxPlayers,
     rules: opts.rules,
+    currentGameId: null,
   };
 }

@@ -71,10 +71,10 @@ Deno.serve(async (req: Request) => {
 
   if (gameErr) return err('internal_error');
 
-  // 8. Update room status to 'playing'
+  // 8. Update room status to 'playing' and link the live game for lobby + reconnection
   const { error: updateErr } = await admin
     .from('rooms')
-    .update({ status: 'playing' })
+    .update({ status: 'playing', current_game_id: gameId })
     .eq('id', roomId);
 
   if (updateErr) return err('internal_error');

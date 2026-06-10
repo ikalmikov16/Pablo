@@ -1,14 +1,15 @@
 /**
- * Single entry point for backend access. Swap between mock and real client here.
+ * Single entry point for backend access.
  *
- * Phase 4-5: app uses mockClient (in-memory + bots)
- * Phase 6+:  app uses realClient (Supabase)
- *
- * Routes should import the `client` singleton from `./client`, not call
- * `createMockClient` / `createRealClient` themselves.
+ * The app runs two clients side by side: the mock (in-memory + bots) for the
+ * offline "vs bots" flow and the real Supabase client for online multiplayer.
+ * Routes select one via `?mode=online|offline` (`resolveClientForMode`) and
+ * read it through `usePabloClient()`; they should not call `createMockClient`
+ * / `createRealClient` directly.
  */
 
 export type {
+  ActiveSession,
   ClientErrorCode,
   ClientResult,
   ClientTransportError,
@@ -18,6 +19,8 @@ export type {
   RoomId,
   Unsubscribe,
 } from './types';
-export { createMockClient } from './mockClient';
-export { createRealClient } from './realClient';
-export { client } from './client';
+export { ClientProvider, usePabloClient } from './ClientProvider';
+export { createMockClient, type MockClient } from './mockClient';
+export { createRealClient, type RealClientOptions } from './realClient';
+export { client, getMockClient, getRealClient, resolveClientForMode } from './client';
+export type { GameMode } from './gameMode';

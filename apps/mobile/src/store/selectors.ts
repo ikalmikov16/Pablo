@@ -450,6 +450,19 @@ export function selectIsAnimating(s: GameStore): boolean {
   return s.animQueue.pending.length > 0;
 }
 
+export function selectIsSubmitting(s: GameStore): boolean {
+  return s.ui.submitting;
+}
+
+/** Input gate: block taps during flight choreography or an in-flight online move. */
+export function selectIsBusy(s: GameStore): boolean {
+  return selectIsAnimating(s) || selectIsSubmitting(s);
+}
+
+export function selectNetworkError(s: GameStore): boolean {
+  return s.ui.networkError;
+}
+
 export function selectActiveFlights(s: GameStore) {
   return s.flightQueue.flights;
 }

@@ -30,7 +30,7 @@ Deno.serve(async (req: Request) => {
   // 3. Look up room by code
   const { data: room, error: roomErr } = await admin
     .from('rooms')
-    .select('id, code, host_id, status, rules, max_players, created_at')
+    .select('id, code, host_id, status, rules, max_players, current_game_id, created_at')
     .eq('code', code.toUpperCase())
     .maybeSingle();
 
@@ -72,6 +72,7 @@ Deno.serve(async (req: Request) => {
         members: (members ?? []).map((m: { user_id: string }) => m.user_id),
         maxPlayers: room.max_players,
         rules: room.rules,
+        currentGameId: room.current_game_id ?? null,
       },
     });
   }
@@ -110,6 +111,7 @@ Deno.serve(async (req: Request) => {
       members: (allMembers ?? []).map((m: { user_id: string }) => m.user_id),
       maxPlayers: room.max_players,
       rules: room.rules,
+      currentGameId: room.current_game_id ?? null,
     },
   });
 });

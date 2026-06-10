@@ -21,7 +21,7 @@ describe('resolveDisplayName', () => {
     expect(resolveDisplayName(view, 'bot:1')).toBe('Cabo Cassette');
   });
 
-  it('falls back to id for unknown human ids', () => {
-    expect(resolveDisplayName(view, 'stranger')).toBe('stranger');
+  it('uses a short label for unknown human ids', () => {
+    expect(resolveDisplayName(view, 'stranger')).toBe('Player stranger');
   });
 });

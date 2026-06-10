@@ -12,11 +12,7 @@ import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { tokens } from '../../../design/tokens';
 import { t } from '../../../i18n';
 import { useGameStore, useGameStoreShallow } from '../../../store/provider';
-import {
-  selectIsAnimating,
-  selectMatchDiscardSlots,
-  selectMyHandSlots,
-} from '../../../store/selectors';
+import { selectIsBusy, selectMatchDiscardSlots, selectMyHandSlots } from '../../../store/selectors';
 import { CardSlotGrid, type CardSlot } from '../internal/CardSlotGrid';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -30,7 +26,7 @@ type Props = {
 export function MatchDiscardFlow({ onConfirm, onCancel }: Props) {
   const slots = useGameStoreShallow(selectMyHandSlots);
   const legalSlots = useGameStoreShallow(selectMatchDiscardSlots);
-  const isAnimating = useGameStore(selectIsAnimating);
+  const isBusy = useGameStore(selectIsBusy);
 
   const gridSlots: ReadonlyArray<CardSlot> = slots.map((s) => ({
     index: s.index,
@@ -46,7 +42,7 @@ export function MatchDiscardFlow({ onConfirm, onCancel }: Props) {
           gridWidth={GRID_WIDTH}
           legalIndices={legalSlots}
           onTap={(slot) => {
-            if (!isAnimating) onConfirm(slot.index);
+            if (!isBusy) onConfirm(slot.index);
           }}
         />
         <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} activeOpacity={0.8}>

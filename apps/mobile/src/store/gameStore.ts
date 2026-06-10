@@ -25,6 +25,8 @@ export type UiState = {
   readonly endOfRoundVisible: boolean;
   readonly peekOverlayVisible: boolean;
   readonly peekJustHappened: boolean;
+  readonly submitting: boolean;
+  readonly networkError: boolean;
   readonly lastPeekReveal: {
     readonly target: PlayerId;
     readonly handIndex: number;
@@ -78,6 +80,8 @@ export type GameStoreActions = {
   setPeekOverlayVisible(v: boolean): void;
   setPeekJustHappened(v: boolean): void;
   setLastPeekReveal(reveal: UiState['lastPeekReveal']): void;
+  setSubmitting(v: boolean): void;
+  setNetworkError(v: boolean): void;
 };
 
 export type GameStore = GameStoreState & GameStoreActions;
@@ -89,6 +93,8 @@ const defaultUi: UiState = {
   endOfRoundVisible: false,
   peekOverlayVisible: false,
   peekJustHappened: false,
+  submitting: false,
+  networkError: false,
   lastPeekReveal: null,
   toast: null,
 };
@@ -318,6 +324,8 @@ export function createGameStore() {
               ...s.ui,
               endOfRoundVisible: view.status === 'ended',
               peekOverlayVisible: peekOverlayVisibleFor(view),
+              submitting: false,
+              networkError: false,
             },
           };
           if (s.displayView === null) {
@@ -429,6 +437,14 @@ export function createGameStore() {
 
       setLastPeekReveal(reveal) {
         set((s) => ({ ui: { ...s.ui, lastPeekReveal: reveal } }));
+      },
+
+      setSubmitting(v) {
+        set((s) => ({ ui: { ...s.ui, submitting: v } }));
+      },
+
+      setNetworkError(v) {
+        set((s) => ({ ui: { ...s.ui, networkError: v } }));
       },
     };
   });

@@ -21,9 +21,17 @@ import {
 } from '@pablo/engine';
 
 import type { PabloClient } from './types';
-import type { ClientErrorCode, ClientResult, GameId, Room, RoomId, Unsubscribe } from './types';
+import type {
+  ActiveSession,
+  ClientErrorCode,
+  ClientResult,
+  GameId,
+  Room,
+  RoomId,
+  Unsubscribe,
+} from './types';
 import { defaultClock, defaultScheduler, type Clock, type Scheduler } from './internal/clock';
-import { BOT_IDS, generateRoomCode, makeRoom } from './internal/room';
+import { BOT_IDS, generateRoomCode, isBotId, makeRoom } from './internal/room';
 import { applyAndFanout, makeGameRecord, type GameRecord } from './internal/viewStore';
 import { makeBotRngs, makeBotScheduler, type BotRngs } from './internal/botScheduler';
 
@@ -73,6 +81,7 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
 
   const rooms = new Map<RoomId, Room>();
   const roomSubs = new Map<RoomId, Set<(r: Room) => void>>();
+  let activeSession: ActiveSession | null = null;
 
   // Per-game state: record + per-bot RNGs
   const games = new Map<GameId, { record: GameRecord; rngs: BotRngs }>();
@@ -163,6 +172,9 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
       botScheduler.cancelAll(record);
     }
     rooms.delete(opts.roomId);
+    if (activeSession?.roomId === opts.roomId) {
+      activeSession = null;
+    }
     return ok(undefined);
   }
 
@@ -186,14 +198,46 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
     games.set(gameId, { record, rngs });
 
     // Update room status
-    const updatedRoom: Room = { ...room, status: 'playing' };
+    const updatedRoom: Room = { ...room, status: 'playing', currentGameId: gameId };
     rooms.set(opts.roomId, updatedRoom);
     notifyRoom(updatedRoom);
+    if (!room.members.some(isBotId)) {
+      activeSession = { roomId: opts.roomId, gameId, mode: 'online' };
+    }
 
     // Kick the bot scheduler (bots peek immediately).
     botScheduler.kick(record, rngs);
 
     return ok(gameId);
+  }
+
+  // ── returnToLobby ─────────────────────────────────────────────────────────
+
+  async function returnToLobby(opts: { roomId: RoomId }): Promise<ClientResult<void>> {
+    const room = rooms.get(opts.roomId);
+    if (!room) return fail('not_found');
+    if (room.hostId !== localPlayerId) return fail('not_authorized');
+    const updated: Room = { ...room, status: 'waiting', currentGameId: null };
+    rooms.set(opts.roomId, updated);
+    notifyRoom(updated);
+    activeSession = null;
+    return ok(undefined);
+  }
+
+  // ── getActiveSession ────────────────────────────────────────────────────────
+
+  async function getActiveSession(): Promise<ClientResult<ActiveSession | null>> {
+    if (!activeSession) return ok(null);
+    const entry = games.get(activeSession.gameId);
+    if (!entry) {
+      activeSession = null;
+      return ok(null);
+    }
+    if (entry.record.state.status === 'ended') {
+      activeSession = null;
+      return ok(null);
+    }
+    return ok(activeSession);
   }
 
   // ── applyMove ─────────────────────────────────────────────────────────────
@@ -286,6 +330,8 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
     joinRoom,
     leaveRoom,
     startGame,
+    returnToLobby,
+    getActiveSession,
     applyMove: applyMoveClient,
     subscribeRoom,
     subscribePlayerView,

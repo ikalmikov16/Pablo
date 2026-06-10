@@ -25,9 +25,20 @@ type Props = {
   readonly displayName: (id: PlayerId) => string;
   readonly onPlayAgain: () => void;
   readonly onHome: () => void;
+  readonly showPlayAgain?: boolean;
+  readonly playAgainLabel?: string;
+  readonly waitingMessage?: string | null;
 };
 
-export function EndOfRound({ catalog, displayName, onPlayAgain, onHome }: Props) {
+export function EndOfRound({
+  catalog,
+  displayName,
+  onPlayAgain,
+  onHome,
+  showPlayAgain = true,
+  playAgainLabel,
+  waitingMessage = null,
+}: Props) {
   const players = useGameStoreShallow(selectPlayers);
   const self = useGameStore(selectSelf);
   const view = useGameStore(selectView);
@@ -107,13 +118,17 @@ export function EndOfRound({ catalog, displayName, onPlayAgain, onHome }: Props)
             })}
         </ScrollView>
 
+        {waitingMessage && <Text style={styles.waiting}>{waitingMessage}</Text>}
+
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.secondaryBtn} onPress={onHome} activeOpacity={0.8}>
             <Text style={styles.secondaryBtnText}>{t('result.home')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryBtn} onPress={onPlayAgain} activeOpacity={0.8}>
-            <Text style={styles.primaryBtnText}>{t('result.playAgain')}</Text>
-          </TouchableOpacity>
+          {showPlayAgain && (
+            <TouchableOpacity style={styles.primaryBtn} onPress={onPlayAgain} activeOpacity={0.8}>
+              <Text style={styles.primaryBtnText}>{playAgainLabel ?? t('result.playAgain')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </Animated.View>
     </View>
@@ -191,6 +206,11 @@ const styles = StyleSheet.create({
   scoreValue: {
     width: 52,
     textAlign: 'right',
+    fontSize: tokens.font.size.sm,
+    color: tokens.color.text.secondary,
+  },
+  waiting: {
+    textAlign: 'center',
     fontSize: tokens.font.size.sm,
     color: tokens.color.text.secondary,
   },

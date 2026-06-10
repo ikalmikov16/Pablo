@@ -1,3 +1,5 @@
+import 'react-native-url-polyfill/auto';
+
 import { Stack } from 'expo-router';
 import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -9,6 +11,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(home)" />
+          <Stack.Screen name="(lobby)" />
           <Stack.Screen name="(game)" />
           <Stack.Screen name="dev" />
         </Stack>

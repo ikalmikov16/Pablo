@@ -2,7 +2,7 @@
 
 How the Supabase side fits together. The Phase 5 agent implements this; the engine team can read it for context. The mobile app (`apps/mobile`) consumes the backend through the `PabloClient` interface — see the "PabloClient contract" section at the bottom for what Phase 5 must expose.
 
-Last revised: 2026-05-18 (Phase 5 plan — Phase 2.5 sweep, leak fixes, idempotency model, broadcast realtime).
+Last revised: 2026-06-09 (Phase 6 — `rooms.current_game_id`, `returnToLobby`, `getActiveSession`, real client wiring).
 
 ## Philosophy
 
@@ -30,19 +30,20 @@ Last revised: 2026-05-18 (Phase 5 plan — Phase 2.5 sweep, leak fixes, idempote
 
 Lobby metadata. Lightweight, fully public read.
 
-| Column        | Type          | Notes                                                            |
-| ------------- | ------------- | ---------------------------------------------------------------- |
-| `id`          | `uuid` PK     | default `gen_random_uuid()`                                      |
-| `code`        | `text` UNIQUE | 6-char base32-no-ambiguous join code (no `O`, `0`, `I`, `1`)     |
-| `host_id`     | `uuid`        | references `profiles.id`                                         |
-| `status`      | `text`        | `CHECK (status IN ('waiting','playing'))` — see "Room lifecycle" |
-| `rules`       | `jsonb`       | a `GameRules` object (template for new games)                    |
-| `max_players` | `int`         | `CHECK (max_players BETWEEN 2 AND 6)`; default 4                 |
-| `created_at`  | `timestamptz` | default `now()`                                                  |
+| Column            | Type          | Notes                                                                                     |
+| ----------------- | ------------- | ----------------------------------------------------------------------------------------- |
+| `id`              | `uuid` PK     | default `gen_random_uuid()`                                                               |
+| `code`            | `text` UNIQUE | 6-char base32-no-ambiguous join code (no `O`, `0`, `I`, `1`)                              |
+| `host_id`         | `uuid`        | references `profiles.id`                                                                  |
+| `status`          | `text`        | `CHECK (status IN ('waiting','playing'))` — see "Room lifecycle"                          |
+| `rules`           | `jsonb`       | a `GameRules` object (template for new games)                                             |
+| `max_players`     | `int`         | `CHECK (max_players BETWEEN 2 AND 6)`; default 4                                          |
+| `current_game_id` | `uuid` NULL   | references `games.id` `ON DELETE SET NULL` — RLS-readable link to the live game (Phase 6) |
+| `created_at`      | `timestamptz` | default `now()`                                                                           |
 
 - **RLS**: any authenticated user can `SELECT` (so people can join by code); only `host_id = auth.uid()` can `UPDATE`; `INSERT` only via the `create_room()` SQL function (SECURITY DEFINER); `DELETE` only via `leaveRoom` edge function when the last member leaves.
 
-> **Room lifecycle.** A room is `waiting` until the host calls `startGame`, then `playing` until the live game ends. After a game ends, the host can call `startGame` again (creates a fresh `games` row in `peek_phase`) or `leaveRoom` (which deletes the empty room). There is no `'finished'` terminal status — dead rooms are deleted.
+> **Room lifecycle.** A room is `waiting` until the host calls `startGame`, then `playing` while a live game is linked via `current_game_id`. After a round ends, the host explicitly calls `returnToLobby` (sets `status='waiting'`, clears `current_game_id`) before starting another game. Non-hosts see a "waiting for host" state on the result screen. `leaveRoom` removes a member; when the last member leaves the room is deleted (CASCADE removes games). There is no `'finished'` terminal status.
 
 ### `room_members`
 
@@ -134,14 +135,15 @@ Returns `p_new_version` on success. On `(game_id, idempotency_key)` UNIQUE confl
 
 All live in `supabase/functions/`. All written in TypeScript, run on Deno 2 (`config.toml` already sets `deno_version = 2`). All import the engine via a shared `supabase/functions/deno.json` `imports` map aliasing `@pablo/engine` to `./_shared/engine.bundle.js` — a pre-built ESM bundle of `packages/engine/src/index.ts` produced by `bun run build:engine-bundle`. (We bundle rather than import the engine sources directly because Supabase's Deno edge runtime doesn't reliably resolve extensionless TypeScript imports inside Bun workspace packages.) **The bundle must be regenerated whenever `packages/engine` changes** — `AGENTS.md` calls this out; forgetting it means the edge functions silently run a stale engine.
 
-| Function         | Purpose                                  | Inputs                                              | Side effects / Outputs                                                                                                           |
-| ---------------- | ---------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `joinRoom`       | Add caller to a room                     | `{ code }`                                          | Inserts `room_members`. Rejects if room `status='playing'` or full. Returns `{ room }`.                                          |
-| `leaveRoom`      | Remove caller from a room                | `{ roomId }`                                        | Deletes row; if last member, deletes the room and any of its games. Returns `{}`.                                                |
-| `startGame`      | Host starts the game                     | `{ roomId }`                                        | Calls `engine.newGame`, inserts `games` row in `status='peek_phase'`, sets `rooms.status='playing'`, broadcasts `game:{id}` v=0. |
-| `applyMove`      | Submit any move (all 12 `Move` variants) | `{ gameId, move, idempotencyKey, expectedVersion }` | Loads game, runs `engine.applyMove`, calls `apply_move_atomic`, broadcasts `game:{id}` v=new. Returns `{ version }`.             |
-| `getPlayerView`  | Per-player projection (read)             | `{ gameId }`                                        | Loads game, runs `engine.computePlayerView(state, auth.uid())`. Returns `{ view, version }`.                                     |
-| `getEventsSince` | Per-player event catch-up (read)         | `{ gameId, sinceVersion }`                          | Loads events, redacts per `auth.uid()` (see below). Returns `{ events, currentVersion }`.                                        |
+| Function         | Purpose                                  | Inputs                                              | Side effects / Outputs                                                                                                                               |
+| ---------------- | ---------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `joinRoom`       | Add caller to a room                     | `{ code }`                                          | Inserts `room_members`. Rejects if room `status='playing'` or full. Returns `{ room }`.                                                              |
+| `leaveRoom`      | Remove caller from a room                | `{ roomId }`                                        | Deletes row; if last member, deletes the room and any of its games. Returns `{}`.                                                                    |
+| `startGame`      | Host starts the game                     | `{ roomId }`                                        | Calls `engine.newGame`, inserts `games` row in `status='peek_phase'`, sets `rooms.status='playing'` + `current_game_id`, broadcasts `game:{id}` v=0. |
+| `returnToLobby`  | Host returns room after a round          | `{ roomId }`                                        | Host only. Sets `rooms.status='waiting'`, `current_game_id=null`. Enables another `startGame`.                                                       |
+| `applyMove`      | Submit any move (all 12 `Move` variants) | `{ gameId, move, idempotencyKey, expectedVersion }` | Loads game, runs `engine.applyMove`, calls `apply_move_atomic`, broadcasts `game:{id}` v=new. Returns `{ version }`.                                 |
+| `getPlayerView`  | Per-player projection (read)             | `{ gameId }`                                        | Loads game, runs `engine.computePlayerView(state, auth.uid())`. Returns `{ view, version }`.                                                         |
+| `getEventsSince` | Per-player event catch-up (read)         | `{ gameId, sinceVersion }`                          | Loads events, redacts per `auth.uid()` (see below). Returns `{ events, currentVersion }`.                                                            |
 
 > Phase 2.5 collapsed `callPablo` into `applyMove`. `call_pablo` is just one of `Move`'s variants — no separate endpoint.
 
@@ -168,9 +170,13 @@ After every successful `applyMove`, the edge function publishes a Realtime **bro
 
 Events ride the same `game:{gameId}` channel. Each broadcast tick prompts a `getEventsSince(gameId, lastSeenVersion)` call, which delivers all rows with `version > lastSeenVersion` in version+seq ascending order. Each batch is emitted to `PabloClient.subscribeGameEvents`. Events drive the animation layer; the view stream remains the source of truth for state.
 
+**Initial sync (reconnection):** the first successful sync after subscribing snaps `lastSeenVersion` to the current version _without_ emitting the historical catch-up batch. Reconnecting into an in-progress match therefore shows the current state immediately (from the view stream) instead of replaying every past move's animation; only deltas applied after reconnect are animated.
+
 ### Room subscriptions — postgres_changes (safe)
 
 `rooms` and `room_members` are RLS-readable by room members, so the mobile app can subscribe directly to `postgres_changes` filtered by `room_id`. No edge function in the path.
+
+Both tables are added to the `supabase_realtime` publication (migration `20260609130000`) — `postgres_changes` delivers nothing for unpublished tables. The filter columns (`rooms.id`, `room_members.room_id`) are part of each primary key, so DELETE events carry them without `REPLICA IDENTITY FULL`.
 
 This pattern is simple and cheat-proof: clients never see hidden data, and the two streams arrive in the order moves were applied (version-monotonic).
 
@@ -220,6 +226,8 @@ type PabloClient = {
   joinRoom(opts: { code: string }): Promise<ClientResult<Room>>;
   leaveRoom(opts: { roomId: RoomId }): Promise<ClientResult<void>>;
   startGame(opts: { roomId: RoomId }): Promise<ClientResult<GameId>>;
+  returnToLobby(opts: { roomId: RoomId }): Promise<ClientResult<void>>;
+  getActiveSession(): Promise<ClientResult<{ roomId; gameId; mode: 'online' } | null>>;
   applyMove(opts: {
     gameId: GameId;
     move: Move;
@@ -249,6 +257,8 @@ Mapping to this schema:
 | `joinRoom`            | Edge function `joinRoom`.                                                                                                           |
 | `leaveRoom`           | Edge function `leaveRoom`.                                                                                                          |
 | `startGame`           | Edge function `startGame` (host only).                                                                                              |
+| `returnToLobby`       | Edge function `returnToLobby` (host only, after round end).                                                                         |
+| `getActiveSession`    | Query `room_members` → `rooms` where `status='playing'` and `current_game_id IS NOT NULL`.                                          |
 | `applyMove`           | Edge function `applyMove` (idempotency + expectedVersion required).                                                                 |
 | `subscribeRoom`       | `postgres_changes` subscription on `rooms` and `room_members` filtered by `room_id`.                                                |
 | `subscribePlayerView` | View stream: subscribe to broadcast `game:{gameId}`, fetch `getPlayerView` on tick. Callback receives `(view, version)`.            |

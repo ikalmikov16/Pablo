@@ -15,6 +15,7 @@
  */
 
 import { router, useLocalSearchParams } from 'expo-router';
+import type { GameMode } from '../../../src/supabase/gameMode';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,6 +29,7 @@ import { MatchHandFlow } from '../../../src/components/game/actionFlows/MatchHan
 import { PowerFlow } from '../../../src/components/game/actionFlows/PowerFlow';
 import { DeckArea } from '../../../src/components/game/DeckArea';
 import { EndOfRound } from '../../../src/components/game/EndOfRound';
+import { NetworkBanner } from '../../../src/components/game/NetworkBanner';
 import { OwnHandGrid } from '../../../src/components/game/OwnHandGrid';
 import { PabloBanner } from '../../../src/components/game/PabloBanner';
 import { TableDimOverlay } from '../../../src/components/game/internal/TableDimOverlay';
@@ -38,6 +40,7 @@ import { tokens } from '../../../src/design/tokens';
 import { hapticForMove, hapticForMoveError } from '../../../src/feedback/haptics';
 import { t } from '../../../src/i18n';
 import { botName, isBotId } from '../../../src/supabase/internal/room';
+import { resolveDisplayName } from '../../../src/store/displayName';
 import { useGameStore, useGameStoreShallow } from '../../../src/store/provider';
 import {
   selectCanDraw,
@@ -46,6 +49,7 @@ import {
   selectDrawnCardId,
   selectEndOfRoundVisible,
   selectOpponentEntriesDisplay,
+  selectIsBusy,
   selectIsAnimating,
   selectIsTableDimmed,
   selectPeekOverlayVisible,
@@ -54,12 +58,19 @@ import {
   selectVersion,
 } from '../../../src/store/selectors';
 import type { ActionBarItem } from '../../../src/store/selectors';
-import { client } from '../../../src/supabase/client';
+import { usePabloClient } from '../../../src/supabase/ClientProvider';
+import type { RoomId } from '../../../src/supabase/types';
 
 type ActiveFlow = 'match_hand' | 'match_discard' | 'draw_flow' | null;
 
 export default function GameScreen() {
-  const { gameId } = useLocalSearchParams<{ gameId: string }>();
+  const { gameId, mode, roomId } = useLocalSearchParams<{
+    gameId: string;
+    mode?: GameMode;
+    roomId?: string;
+  }>();
+  const isOnline = mode === 'online';
+  const client = usePabloClient();
   const view = useGameStore(selectView);
   const version = useGameStore(selectVersion);
   const deckCount = useGameStore(selectDeckCount);
@@ -71,13 +82,32 @@ export default function GameScreen() {
   const isEnded = useGameStore(selectEndOfRoundVisible);
   const isPowerOverlay = useGameStore(selectPowerOverlayVisible);
   const isAnimating = useGameStore(selectIsAnimating);
+  const isBusy = useGameStore(selectIsBusy);
   const tableDimmed = useGameStore(selectIsTableDimmed);
   const showToast = useGameStore((s) => s.showToast);
   const clearPeekPicks = useGameStore((s) => s.clearPeekPicks);
   const setPeekJustHappened = useGameStore((s) => s.setPeekJustHappened);
   const setLastPeekReveal = useGameStore((s) => s.setLastPeekReveal);
+  const setSubmitting = useGameStore((s) => s.setSubmitting);
+  const setNetworkError = useGameStore((s) => s.setNetworkError);
 
   const [activeFlow, setActiveFlow] = useState<ActiveFlow>(null);
+  const [isHost, setIsHost] = useState(false);
+
+  useEffect(() => {
+    if (!isOnline || !roomId) return;
+    const unsub = client.subscribeRoom(roomId as RoomId, (room) => {
+      if (view) setIsHost(room.hostId === view.self);
+      // Once this round is over and the host moves the room on, follow them:
+      // into the next game, or back to the lobby while they decide.
+      if (room.currentGameId && room.currentGameId !== gameId) {
+        router.replace(`/(game)/${room.currentGameId}?mode=online&roomId=${roomId}`);
+      } else if (room.status === 'waiting') {
+        router.replace(`/(lobby)/room/${roomId}`);
+      }
+    });
+    return unsub;
+  }, [client, isOnline, roomId, gameId, view?.self]);
 
   // Open draw flow after the deck→drawn flight finishes (avoid two Skia cards at once).
   useEffect(() => {
@@ -89,24 +119,49 @@ export default function GameScreen() {
   }, [activeFlow, drawnCardId, isAnimating, view?.pendingPower, view?.status]);
 
   async function dispatch(move: Move) {
-    if (!view || isAnimating) return;
+    if (!view || isBusy) return;
     hapticForMove(move);
     const key = `${gameId}:${version}:${move.type}:${JSON.stringify(move)}`;
+    if (isOnline) setSubmitting(true);
     const result = await client.applyMove({
       gameId,
       move,
       idempotencyKey: key,
       expectedVersion: version,
     });
+    if (isOnline) setSubmitting(false);
     if (!result.ok) {
       hapticForMoveError();
+      if (result.error === 'network_error') {
+        setNetworkError(true);
+      }
       showToast(`error.${result.error}`);
     }
   }
 
+  async function handleLeave() {
+    if (isOnline && roomId) {
+      await client.leaveRoom({ roomId: roomId as RoomId });
+    }
+    router.replace('/(home)');
+  }
+
+  async function handlePlayAgain() {
+    if (!isOnline || !roomId) {
+      router.replace('/(home)/new-game');
+      return;
+    }
+    const lobbyResult = await client.returnToLobby({ roomId: roomId as RoomId });
+    if (!lobbyResult.ok) {
+      showToast(`error.${lobbyResult.error}`);
+      return;
+    }
+    router.replace(`/(lobby)/room/${roomId}`);
+  }
+
   function getDisplayName(id: string): string {
+    if (view) return resolveDisplayName(view, id);
     if (isBotId(id)) return botName(id);
-    if (id === view?.self) return t('game.you');
     return id;
   }
 
@@ -131,12 +186,14 @@ export default function GameScreen() {
     <View style={styles.screen}>
       <FlyingCardLayer catalog={catalog} />
       <SafeAreaView style={styles.root}>
+        <NetworkBanner />
+
         {/* Top bar */}
         <View style={styles.topBar}>
           <Text style={styles.turnLabel} numberOfLines={1}>
             {view ? turnLabel : t('game.status.peekPhase')}
           </Text>
-          <TouchableOpacity onPress={() => router.replace('/(home)')} activeOpacity={0.7}>
+          <TouchableOpacity onPress={() => void handleLeave()} activeOpacity={0.7}>
             <Text style={styles.leaveText}>{t('game.leave')}</Text>
           </TouchableOpacity>
         </View>
@@ -257,8 +314,11 @@ export default function GameScreen() {
           <EndOfRound
             catalog={catalog}
             displayName={getDisplayName}
-            onPlayAgain={() => router.replace('/(home)/new-game')}
-            onHome={() => router.replace('/(home)')}
+            showPlayAgain={!isOnline || isHost}
+            playAgainLabel={isOnline ? t('result.backToLobby') : t('result.playAgain')}
+            waitingMessage={isOnline && !isHost ? t('result.waitingForHost') : null}
+            onPlayAgain={() => void handlePlayAgain()}
+            onHome={() => void handleLeave()}
           />
         )}
 

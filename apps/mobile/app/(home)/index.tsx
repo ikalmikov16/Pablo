@@ -1,20 +1,72 @@
-import { Link } from 'expo-router';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Link, router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { tokens } from '../../src/design/tokens';
 import { t } from '../../src/i18n';
+import { getRealClient } from '../../src/supabase/client';
 
 export default function HomeScreen() {
+  const [resolving, setResolving] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    // Never let a slow/unreachable backend block the offline "vs bots" path:
+    // reveal the home UI after a short grace period. A late reconnection can
+    // still navigate via router.replace.
+    const fallback = setTimeout(() => {
+      if (active) setResolving(false);
+    }, 2500);
+    void (async () => {
+      try {
+        const client = getRealClient();
+        const signInResult = await client.signIn();
+        if (!active || !signInResult.ok) {
+          if (active) setResolving(false);
+          return;
+        }
+        const sessionResult = await client.getActiveSession();
+        if (!active) return;
+        if (sessionResult.ok && sessionResult.data) {
+          const { gameId, roomId } = sessionResult.data;
+          router.replace(`/(game)/${gameId}?mode=online&roomId=${roomId}`);
+          return;
+        }
+      } catch {
+        // Supabase env not configured — skip reconnection resolver.
+      }
+      if (active) setResolving(false);
+    })();
+    return () => {
+      active = false;
+      clearTimeout(fallback);
+    };
+  }, []);
+
+  if (resolving) {
+    return (
+      <SafeAreaView style={styles.root}>
+        <ActivityIndicator color={tokens.color.accent.primary} size="large" />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.content}>
         <Text style={styles.title}>{t('home.title')}</Text>
         <Text style={styles.subtitle}>{t('home.subtitle')}</Text>
 
-        <Link href="/(home)/new-game" asChild>
+        <Link href="/(lobby)" asChild>
           <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.8}>
-            <Text style={styles.primaryBtnText}>{t('home.playVsBots')}</Text>
+            <Text style={styles.primaryBtnText}>{t('home.playOnline')}</Text>
+          </TouchableOpacity>
+        </Link>
+
+        <Link href="/(home)/new-game" asChild>
+          <TouchableOpacity style={styles.secondaryBtn} activeOpacity={0.8}>
+            <Text style={styles.secondaryBtnText}>{t('home.playVsBots')}</Text>
           </TouchableOpacity>
         </Link>
 
@@ -53,14 +105,30 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   primaryBtn: {
+    width: '100%',
     backgroundColor: tokens.color.accent.primary,
     borderRadius: tokens.radius.md,
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.xxl,
     marginTop: tokens.space.lg,
+    alignItems: 'center',
   },
   primaryBtnText: {
     color: tokens.color.text.inverse,
+    fontSize: tokens.font.size.md,
+    fontWeight: tokens.font.weight.semibold,
+  },
+  secondaryBtn: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: tokens.color.border.subtle,
+    borderRadius: tokens.radius.md,
+    paddingVertical: tokens.space.md,
+    paddingHorizontal: tokens.space.xxl,
+    alignItems: 'center',
+  },
+  secondaryBtnText: {
+    color: tokens.color.text.primary,
     fontSize: tokens.font.size.md,
     fontWeight: tokens.font.weight.semibold,
   },

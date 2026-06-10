@@ -1,19 +1,35 @@
 /**
- * Process-wide PabloClient singleton.
+ * PabloClient accessors — mock for offline vs-bots, real for multiplayer.
  *
- * Routes import `client` from here; they MUST NOT import `mockClient` or
- * `realClient` directly. That keeps the swap to the real backend a one-line
- * change in this file (Phase 6).
- *
- * Phase 4: mock client (in-memory, bots).
- * Phase 6: change the implementation to `createRealClient()`.
- *
- * Note: the singleton is typed as `MockClient` (a superset of `PabloClient`)
- * so the home/new-game flow can call the mock-only `addBotsToRoom` helper.
- * Phase 6 retypes this to `PabloClient` and the home flow rebuilds against
- * `joinRoom` / human-only flows.
+ * Routes pick the client via `?mode=online|offline` on the game route and
+ * `ClientProvider` in lobby / home flows. Do not import mock/real directly
+ * from screens except through `usePabloClient()` or these accessors.
  */
 
 import { createMockClient, type MockClient } from './mockClient';
+import { createRealClient } from './realClient';
+import type { PabloClient } from './types';
 
-export const client: MockClient = createMockClient();
+let mockSingleton: MockClient | null = null;
+let realSingleton: PabloClient | null = null;
+
+export function getMockClient(): MockClient {
+  if (!mockSingleton) {
+    mockSingleton = createMockClient();
+  }
+  return mockSingleton;
+}
+
+export function getRealClient(): PabloClient {
+  if (!realSingleton) {
+    realSingleton = createRealClient();
+  }
+  return realSingleton;
+}
+
+export function resolveClientForMode(mode: 'online' | 'offline'): PabloClient {
+  return mode === 'online' ? getRealClient() : getMockClient();
+}
+
+/** @deprecated Use getMockClient / getRealClient / usePabloClient instead. */
+export const client: MockClient = getMockClient();

@@ -14,7 +14,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { tokens } from '../../design/tokens';
 import { t } from '../../i18n';
 import { useGameStore, useGameStoreShallow } from '../../store/provider';
-import { selectActionBarItems, selectIsAnimating } from '../../store/selectors';
+import { selectActionBarItems, selectIsBusy } from '../../store/selectors';
 import type { ActionBarItem } from '../../store/selectors';
 
 type Props = {
@@ -37,7 +37,7 @@ const LABELS: Readonly<Record<string, string>> = {
 
 export function ActionBar({ onCompositeAction, onDispatchMove }: Props) {
   const items = useGameStoreShallow(selectActionBarItems);
-  const isAnimating = useGameStore(selectIsAnimating);
+  const isBusy = useGameStore(selectIsBusy);
 
   if (items.length === 0) return null;
 
@@ -54,7 +54,7 @@ export function ActionBar({ onCompositeAction, onDispatchMove }: Props) {
               isPablo && !item.enabled && styles.btnPabloDisabled,
               !isPablo && !item.enabled && styles.btnDisabled,
             ]}
-            disabled={!item.enabled || isAnimating}
+            disabled={!item.enabled || isBusy}
             activeOpacity={0.75}
             onPress={() => {
               if (item.move) {

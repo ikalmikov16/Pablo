@@ -14,7 +14,8 @@
   },
   "home": {
     "title": "Pablo",
-    "subtitle": "Play a round against bots",
+    "subtitle": "Play offline vs bots or online with friends",
+    "playOnline": "Play online",
     "playVsBots": "Play vs bots",
     "botCount": {
       "title": "How many opponents?",
@@ -110,7 +111,40 @@
     },
     "leave": "Leave",
     "you": "You",
-    "score": "{{score}} pts"
+    "playerShort": "Player {{id}}",
+    "score": "{{score}} pts",
+    "network": {
+      "reconnecting": "Reconnecting…"
+    }
+  },
+  "lobby": {
+    "title": "Online lobby",
+    "subtitle": "Create a room or join with a code",
+    "hub": {
+      "create": "Create room",
+      "join": "Join by code"
+    },
+    "create": {
+      "title": "Create a room",
+      "subtitle": "Share the code with friends on the same network",
+      "maxPlayers": "{{count}} players",
+      "confirm": "Create"
+    },
+    "join": {
+      "title": "Join a room",
+      "subtitle": "Enter the 6-character room code",
+      "placeholder": "ROOM CODE",
+      "confirm": "Join"
+    },
+    "room": {
+      "codeLabel": "Room code",
+      "members": "Players",
+      "hostBadge": "Host",
+      "capacity": "{{count}} / {{max}} players",
+      "start": "Start game",
+      "leave": "Leave room",
+      "gameStarting": "Game starting…"
+    }
   },
   "result": {
     "title": "Round over",
@@ -121,6 +155,8 @@
     "score": "{{score}} pts",
     "totals": "Totals",
     "playAgain": "Play again",
+    "backToLobby": "Back to lobby",
+    "waitingForHost": "Waiting for the host to start another round…",
     "home": "Home"
   },
   "error": {

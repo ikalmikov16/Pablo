@@ -32,7 +32,7 @@ import { t } from '../../../i18n';
 import { useGameStore, useGameStoreShallow } from '../../../store/provider';
 import {
   selectDrawnCardId,
-  selectIsAnimating,
+  selectIsBusy,
   selectMatchDrawnSlots,
   selectMyHandSlots,
   selectSwapDrawnSlots,
@@ -114,7 +114,7 @@ export function DrawFlow({ onSwap, onDiscard, onMatchDrawn }: Props) {
   const slots = useGameStoreShallow(selectMyHandSlots);
   const swapSlots = useGameStoreShallow(selectSwapDrawnSlots);
   const matchSlots = useGameStoreShallow(selectMatchDrawnSlots);
-  const isAnimating = useGameStore(selectIsAnimating);
+  const isBusy = useGameStore(selectIsBusy);
 
   const [stage, setStage] = useState<Stage>('main');
 
@@ -124,7 +124,7 @@ export function DrawFlow({ onSwap, onDiscard, onMatchDrawn }: Props) {
   }));
 
   const guard = (fn: () => void) => {
-    if (isAnimating) return;
+    if (isBusy) return;
     fn();
   };
 

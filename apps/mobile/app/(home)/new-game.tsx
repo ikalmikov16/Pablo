@@ -5,8 +5,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { tokens } from '../../src/design/tokens';
 import { t } from '../../src/i18n';
-import { client } from '../../src/supabase/client';
+import { getMockClient } from '../../src/supabase/client';
 import type { ClientErrorCode } from '../../src/supabase/types';
+
+const client = getMockClient();
 
 const BOT_OPTIONS: Array<{ count: 1 | 2 | 3; label: string }> = [
   { count: 1, label: t('home.botCount.one') },
@@ -38,7 +40,7 @@ export default function NewGameScreen() {
         setError(gameResult.error);
         return;
       }
-      router.replace(`/(game)/${gameResult.data}`);
+      router.replace(`/(game)/${gameResult.data}?mode=offline`);
     } finally {
       setLoading(false);
     }

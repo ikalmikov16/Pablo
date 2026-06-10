@@ -68,5 +68,6 @@ describe('makeRoom', () => {
     expect(room.status).toBe('waiting');
     expect(room.members).toEqual(['human']);
     expect(room.maxPlayers).toBe(4);
+    expect(room.currentGameId).toBeNull();
   });
 });

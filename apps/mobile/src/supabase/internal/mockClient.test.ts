@@ -149,6 +149,42 @@ describe('applyMove — idempotency and version', () => {
   });
 });
 
+describe('getActiveSession', () => {
+  test('returns null for offline bot games', async () => {
+    const client = makeClient();
+    await client.signIn();
+    const room = await client.createRoom({ maxPlayers: 3 });
+    if (!room.ok) throw new Error();
+    await client.addBotsToRoom({ roomId: room.data.id, count: 1 });
+    await client.startGame({ roomId: room.data.id });
+    const session = await client.getActiveSession();
+    expect(session.ok).toBe(true);
+    if (session.ok) expect(session.data).toBeNull();
+  });
+});
+
+describe('returnToLobby', () => {
+  test('host can return a playing room to waiting', async () => {
+    const client = makeClient();
+    await client.signIn();
+    const room = await client.createRoom({ maxPlayers: 3 });
+    if (!room.ok) throw new Error();
+    await client.addBotsToRoom({ roomId: room.data.id, count: 1 });
+    await client.startGame({ roomId: room.data.id });
+
+    const result = await client.returnToLobby({ roomId: room.data.id });
+    expect(result.ok).toBe(true);
+
+    await new Promise<void>((resolve) => {
+      client.subscribeRoom(room.data.id, (next) => {
+        expect(next.status).toBe('waiting');
+        expect(next.currentGameId).toBeNull();
+        resolve();
+      });
+    });
+  });
+});
+
 describe('subscribeGameEvents', () => {
   test('fires events when a move is applied', async () => {
     const client = makeClient();

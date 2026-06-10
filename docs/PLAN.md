@@ -4,7 +4,7 @@ Living plan. Agents MUST update this after meaningful changes — move items bet
 
 ## Current phase
 
-**Phase 6 — Multiplayer wiring** is next up (not started). **Phase 4.5 — UX overhaul + card clarity** (`phase-4-5-card-clarity`) squash-merged to `main` (2026-06-09): poker-table layout, flying-card choreography (Packages B / B.1 / C), display-view latch + proportional card art (Package D), deck→drawn shared transition (Pass 5), and `.cursor/rules/debugging.mdc`. Phases 4 (single-player vs bot) and 5 (Supabase backend) are on `main`.
+**Phase 7 — Polish & animations** is next up (not started). **Phase 6 — Multiplayer wiring** (`phase-6-multiplayer`) squash-merged to `main` (2026-06-10): `realClient`, lobby UI, `getActiveSession` reconnection, `rooms.current_game_id`, `returnToLobby`, realtime publication for lobby subscriptions, tick-pump initial-sync snap. Manual two-device pass validated (simulator + physical iPhone via Expo Go).
 
 ---
 
@@ -86,10 +86,16 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
   - Pass 5: uniform flight scale, deck→drawn hero spring, `drawnBandH` aspect fix.
   - `.cursor/rules/debugging.mdc` — deterministic root-cause debugging loop.
   - Plans: `docs/plans/phase-4-5-*.md`; `bun run check` clean.
+- ✅ **Phase 6 — Multiplayer wiring** (`phase-6-multiplayer` squash-merged to `main`, 2026-06-10).
+  - `realClient` (Supabase JS + edge invoke + `GameTickPump` view/event sequencer); per-route mock vs real via `ClientProvider` + `?mode=online|offline`.
+  - Lobby: create / join-by-code / room screen with live member list; host start; guest `currentGameId` discovery.
+  - `getActiveSession` cold-launch reconnection; `returnToLobby` edge function; `rooms.current_game_id` migration; realtime publication on `rooms` + `room_members`.
+  - Online move latency masking (`submitting` lock, `NetworkBanner`); non-host follow-the-host after round end.
+  - Integration tests in `tests/integration/multiplayer.test.ts`; plan at `docs/plans/phase-6-multiplayer.md`; `bun run check` clean.
 
 ## In progress
 
-_(none — Phase 6 is next)_
+(none — Phase 7 is next)
 
 ---
 
