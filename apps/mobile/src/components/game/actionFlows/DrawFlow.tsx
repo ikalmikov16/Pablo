@@ -44,7 +44,6 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const GRID_WIDTH = SCREEN_W - tokens.space.xl * 2;
 const CARD_ASPECT = 1.46;
 const DECK_W = tokens.game.size.deckCard;
-const DECK_H = Math.floor(DECK_W * CARD_ASPECT);
 const DRAWN_W = tokens.game.size.drawnFlowCard;
 const DRAWN_H = Math.floor(DRAWN_W * CARD_ASPECT);
 const HERO_INTRO_SCALE = DECK_W / DRAWN_W;

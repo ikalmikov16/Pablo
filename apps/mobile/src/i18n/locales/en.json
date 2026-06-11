@@ -23,8 +23,7 @@
       "two": "2 bots",
       "three": "3 bots"
     },
-    "start": "Start game",
-    "loading": "Starting…"
+    "start": "Start game"
   },
   "botName": {
     "1": "Cabo Cassette",
@@ -36,15 +35,15 @@
       "yourTurn": "Your turn",
       "opponentTurn": "{{name}}'s turn",
       "peekPhase": "Peek phase",
-      "ended": "Round complete"
+      "ended": "Round complete",
+      "loading": "Loading…"
     },
     "peek": {
       "instruction": "Tap {{count}} of your cards to peek",
       "memorise": "Memorise your cards",
-      "confirm": "Confirm",
       "gotIt": "Got it",
-      "waitingForBots": "Waiting on {{remaining}} opponent…",
-      "waitingForBotsPlural": "Waiting on {{remaining}} opponents…"
+      "opponentPeeking": "{{name}} is peeking…",
+      "opponentReady": "{{name}} is ready ✓"
     },
     "action": {
       "draw": "Draw",
@@ -72,13 +71,6 @@
       "memoriseRevealed": "Memorise it. Tap Got it when you're done.",
       "yourCard": "Your card"
     },
-    "match": {
-      "fail": {
-        "wrong_rank": "Wrong rank — penalty card!",
-        "min_hand_size": "Can't drop below minimum hand size."
-      },
-      "success": "Match!"
-    },
     "power": {
       "peek_self": "Peek your card",
       "peek_opponent": "Peek opponent",
@@ -88,13 +80,11 @@
       "banner": "{{name}} called Pablo!",
       "calledToast": "{{name}} called Pablo!",
       "sublineOnTurn": "Round ending — scoring now.",
-      "sublineOffTurn": "Round ends after the next turn reaches {{name}}.",
-      "callButton": "Call Pablo"
+      "sublineOffTurn": "Round ends after the next turn reaches {{name}}."
     },
     "deck": {
       "count": "{{count}}",
-      "empty": "Empty",
-      "reshuffled": "Deck reshuffled"
+      "empty": "Empty"
     },
     "discard": {
       "empty": "Discard"
@@ -107,7 +97,16 @@
       "discardToast": "{{name}} discarded {{card}}",
       "swapDiscardToast": "{{name}} swapped and discarded {{card}}",
       "matchDiscardToast": "{{name}} matched and discarded {{card}}",
-      "matchDiscardPairToast": "{{name}} matched and discarded two {{rank}}s"
+      "matchDiscardPairToast": "{{name}} matched and discarded two {{rank}}s",
+      "matchFailWrongRank": "{{name}} mismatched — penalty card!",
+      "matchFailMinHand": "{{name}} can't match at the hand limit — penalty card!",
+      "powerToast": "{{name}} unlocked: {{power}}",
+      "peekSelfToast": "{{name}} peeked at their own card",
+      "peekOpponentToast": "{{name}} peeked at one of {{target}}'s cards",
+      "peekYourCardToast": "{{name}} peeked at one of your cards",
+      "blindSwapToast": "{{name}} blind-swapped a card with {{target}}",
+      "blindSwapYouToast": "{{name}} blind-swapped a card with you",
+      "reshuffledToast": "Deck reshuffled"
     },
     "leave": "Leave",
     "you": "You",

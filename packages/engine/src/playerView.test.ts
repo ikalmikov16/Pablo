@@ -69,6 +69,42 @@ describe('computePlayerView — basic projection', () => {
     expect(() => computePlayerView(state, 'nobody')).toThrow();
   });
 
+  it('hasPeeked is false for everyone at the start of peek_phase', () => {
+    const state = makeGame(['alice', 'bob', 'carol']);
+    const view = computePlayerView(state, 'alice');
+    for (const entry of view.players) {
+      expect(entry.hasPeeked).toBe(false);
+    }
+  });
+
+  it('hasPeeked flips per player as they complete their peek quota', () => {
+    const state = makeGame(['alice', 'bob']);
+    const result = applyMove(state, { type: 'choose_peek', playerId: 'bob', indices: [0, 1] });
+    if (!result.ok) throw new Error(result.error);
+    // Viewed by alice: bob has peeked, alice has not. No indices leak.
+    const view = computePlayerView(result.state, 'alice');
+    expect(view.players.find((p) => p.id === 'bob')!.hasPeeked).toBe(true);
+    expect(view.players.find((p) => p.id === 'alice')!.hasPeeked).toBe(false);
+    expect(Object.keys(view.players.find((p) => p.id === 'bob')!.knownCards)).toHaveLength(0);
+  });
+
+  it('hasPeeked reflects partial peek_one progress', () => {
+    const state = makeGame(['alice', 'bob']);
+    const result = applyMove(state, { type: 'peek_one', playerId: 'alice', handIndex: 0 });
+    if (!result.ok) throw new Error(result.error);
+    const view = computePlayerView(result.state, 'bob');
+    // One of two peeks done — not finished yet.
+    expect(view.players.find((p) => p.id === 'alice')!.hasPeeked).toBe(false);
+  });
+
+  it('hasPeeked is true for everyone once the game is playing or ended', () => {
+    const state = makePlayingGame(['alice', 'bob', 'carol']);
+    const view = computePlayerView(state, 'alice');
+    for (const entry of view.players) {
+      expect(entry.hasPeeked).toBe(true);
+    }
+  });
+
   it('isCurrentTurn is true for the current player only', () => {
     const state = makePlayingGame(['alice', 'bob', 'carol']);
     expect(state.turnIndex).toBe(0);

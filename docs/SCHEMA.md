@@ -141,7 +141,7 @@ All live in `supabase/functions/`. All written in TypeScript, run on Deno 2 (`co
 | `leaveRoom`      | Remove caller from a room                | `{ roomId }`                                        | Deletes row; if last member, deletes the room and any of its games. Returns `{}`.                                                                    |
 | `startGame`      | Host starts the game                     | `{ roomId }`                                        | Calls `engine.newGame`, inserts `games` row in `status='peek_phase'`, sets `rooms.status='playing'` + `current_game_id`, broadcasts `game:{id}` v=0. |
 | `returnToLobby`  | Host returns room after a round          | `{ roomId }`                                        | Host only. Sets `rooms.status='waiting'`, `current_game_id=null`. Enables another `startGame`.                                                       |
-| `applyMove`      | Submit any move (all 12 `Move` variants) | `{ gameId, move, idempotencyKey, expectedVersion }` | Loads game, runs `engine.applyMove`, calls `apply_move_atomic`, broadcasts `game:{id}` v=new. Returns `{ version }`.                                 |
+| `applyMove`      | Submit any move (all 13 `Move` variants) | `{ gameId, move, idempotencyKey, expectedVersion }` | Loads game, runs `engine.applyMove`, calls `apply_move_atomic`, broadcasts `game:{id}` v=new. Returns `{ version }`.                                 |
 | `getPlayerView`  | Per-player projection (read)             | `{ gameId }`                                        | Loads game, runs `engine.computePlayerView(state, auth.uid())`. Returns `{ view, version }`.                                                         |
 | `getEventsSince` | Per-player event catch-up (read)         | `{ gameId, sinceVersion }`                          | Loads events, redacts per `auth.uid()` (see below). Returns `{ events, currentVersion }`.                                                            |
 
@@ -186,11 +186,12 @@ This pattern is simple and cheat-proof: clients never see hidden data, and the t
 
 `getEventsSince` performs **per-player redaction**:
 
-| Event type   | Redaction (when caller ≠ `playerId`)                                                              |
-| ------------ | ------------------------------------------------------------------------------------------------- |
-| `peeked`     | Replace `cardId` with `null`. Caller learns "alice peeked bob's slot 2" but not what card it was. |
-| `card_drawn` | No redaction needed (no `cardId` in payload).                                                     |
-| All others   | No redaction — all other event payloads are public-safe (peek_chosen carries no indices, etc.).   |
+| Event type        | Redaction (when caller ≠ `playerId`)                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `peeked`          | Replace `cardId` with `null`. Caller learns "alice peeked bob's slot 2" but not what card it was.                                     |
+| `peek_one_chosen` | Replace `cardId` **and** `handIndex` with `null`. Initial-peek picks are fully private — both the card identity and the chosen index. |
+| `card_drawn`      | No redaction needed (no `cardId` in payload).                                                                                         |
+| All others        | No redaction — all other event payloads are public-safe (peek_chosen carries no indices, etc.).                                       |
 
 The redaction table is encoded as a tiny pure function in `supabase/functions/_shared/redact.ts` so it can be unit-tested alongside the engine.
 

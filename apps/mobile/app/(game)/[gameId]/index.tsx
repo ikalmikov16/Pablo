@@ -22,6 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { Move } from '@pablo/engine';
 import { ActionBar } from '../../../src/components/game/ActionBar';
+import { AnnouncementBanner } from '../../../src/components/game/AnnouncementBanner';
 import { FlyingCardLayer } from '../../../src/components/game/FlyingCardLayer';
 import { DrawFlow } from '../../../src/components/game/actionFlows/DrawFlow';
 import { MatchDiscardFlow } from '../../../src/components/game/actionFlows/MatchDiscardFlow';
@@ -36,11 +37,16 @@ import { TableDimOverlay } from '../../../src/components/game/internal/TableDimO
 import { TableLayout } from '../../../src/components/game/TableLayout';
 import { PeekOverlay } from '../../../src/components/game/PeekOverlay';
 import { ToastHost } from '../../../src/components/game/ToastHost';
+import { TurnLabel } from '../../../src/components/game/TurnLabel';
 import { tokens } from '../../../src/design/tokens';
-import { hapticForMove, hapticForMoveError } from '../../../src/feedback/haptics';
+import {
+  hapticForMove,
+  hapticForMoveError,
+  hapticForTurnStart,
+} from '../../../src/feedback/haptics';
 import { t } from '../../../src/i18n';
-import { botName, isBotId } from '../../../src/supabase/internal/room';
-import { resolveDisplayName } from '../../../src/store/displayName';
+import { isBotId } from '../../../src/supabase/internal/room';
+import { botDisplayName, resolveDisplayName } from '../../../src/store/displayName';
 import { useGameStore, useGameStoreShallow } from '../../../src/store/provider';
 import {
   selectCanDraw,
@@ -51,6 +57,7 @@ import {
   selectOpponentEntriesDisplay,
   selectIsBusy,
   selectIsAnimating,
+  selectIsMyTurn,
   selectIsTableDimmed,
   selectPeekOverlayVisible,
   selectPowerOverlayVisible,
@@ -83,9 +90,9 @@ export default function GameScreen() {
   const isPowerOverlay = useGameStore(selectPowerOverlayVisible);
   const isAnimating = useGameStore(selectIsAnimating);
   const isBusy = useGameStore(selectIsBusy);
+  const isMyTurn = useGameStore(selectIsMyTurn);
   const tableDimmed = useGameStore(selectIsTableDimmed);
   const showToast = useGameStore((s) => s.showToast);
-  const clearPeekPicks = useGameStore((s) => s.clearPeekPicks);
   const setPeekJustHappened = useGameStore((s) => s.setPeekJustHappened);
   const setLastPeekReveal = useGameStore((s) => s.setLastPeekReveal);
   const setSubmitting = useGameStore((s) => s.setSubmitting);
@@ -108,6 +115,11 @@ export default function GameScreen() {
     });
     return unsub;
   }, [client, isOnline, roomId, gameId, view?.self]);
+
+  // Nudge the player when the turn comes back around to them.
+  useEffect(() => {
+    if (isMyTurn && view?.status === 'playing') hapticForTurnStart();
+  }, [isMyTurn, view?.status]);
 
   // Open draw flow after the deck→drawn flight finishes (avoid two Skia cards at once).
   useEffect(() => {
@@ -161,7 +173,7 @@ export default function GameScreen() {
 
   function getDisplayName(id: string): string {
     if (view) return resolveDisplayName(view, id);
-    if (isBotId(id)) return botName(id);
+    if (isBotId(id)) return botDisplayName(id);
     return id;
   }
 
@@ -190,13 +202,13 @@ export default function GameScreen() {
 
         {/* Top bar */}
         <View style={styles.topBar}>
-          <Text style={styles.turnLabel} numberOfLines={1}>
-            {view ? turnLabel : t('game.status.peekPhase')}
-          </Text>
+          <TurnLabel label={view ? turnLabel : t('game.status.loading')} isMyTurn={isMyTurn} />
           <TouchableOpacity onPress={() => void handleLeave()} activeOpacity={0.7}>
             <Text style={styles.leaveText}>{t('game.leave')}</Text>
           </TouchableOpacity>
         </View>
+
+        <AnnouncementBanner />
 
         <View style={styles.tableArea}>
           <TableDimOverlay active={tableDimmed} />
@@ -234,7 +246,6 @@ export default function GameScreen() {
             }}
             onDismiss={() => {
               setPeekJustHappened(false);
-              clearPeekPicks();
             }}
           />
         )}
@@ -346,12 +357,6 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.color.surface.card,
     borderBottomWidth: 1,
     borderBottomColor: tokens.color.border.subtle,
-  },
-  turnLabel: {
-    flex: 1,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.color.text.primary,
   },
   leaveText: {
     fontSize: tokens.font.size.sm,

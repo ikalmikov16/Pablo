@@ -148,3 +148,33 @@ describe('displayView latch', () => {
     expect(store.getState().displayView).toBe(v1);
   });
 });
+
+describe('announcements', () => {
+  test('announce pins the persistent line without showing a toast', () => {
+    const store = createGameStore();
+    store.getState().announce('Bot discarded a card');
+
+    const ui = store.getState().ui;
+    expect(ui.announcement?.message).toBe('Bot discarded a card');
+    expect(ui.toast).toBeNull();
+  });
+
+  test('each announce bumps the id so the banner re-animates on repeats', () => {
+    const store = createGameStore();
+    store.getState().announce('Match!');
+    const first = store.getState().ui.announcement;
+    store.getState().announce('Match!');
+    const second = store.getState().ui.announcement;
+    expect(first?.id).not.toBe(second?.id);
+  });
+
+  test('showToast does not touch the announcement', () => {
+    const store = createGameStore();
+    store.getState().announce('Pinned line');
+    store.getState().showToast('error.network_error');
+
+    const ui = store.getState().ui;
+    expect(ui.toast?.message).toBe('error.network_error');
+    expect(ui.announcement?.message).toBe('Pinned line');
+  });
+});

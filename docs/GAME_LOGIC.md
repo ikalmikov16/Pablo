@@ -2,7 +2,7 @@
 
 This is the authoritative description of Pablo as implemented by `packages/engine`. If the engine and this doc disagree, **fix the engine**. If the rules need to change, **update this doc first**, then update the engine + tests in the same PR.
 
-Last revised: 2026-05-17 (Phase 2.5 — single-game engine, five turn options, off-turn Pablo, variable hand size).
+Last revised: 2026-06-10 (Phase 7 — documented `peek_one` / `peek_one_chosen`, `hasPeeked` projection flag, peek redaction).
 
 ## Goal
 
@@ -21,11 +21,17 @@ A "game" is a single round. Matches / sessions (best-of-N, score caps, etc.) are
 
 ## Peek phase
 
-After the deal and before any turns begin, the game sits in `status='peek_phase'`. Each player must call `choose_peek` **once**, picking exactly `rules.initialPeekCount` cards from their hand (default 2) to privately look at.
+After the deal and before any turns begin, the game sits in `status='peek_phase'`. Each player must peek exactly `rules.initialPeekCount` cards from their hand (default 2) to privately look at, via one of two equivalent move shapes:
 
-- Peek order is not enforced — every not-yet-peeked player has a legal `choose_peek` move simultaneously.
-- The chosen indices are private. The `peek_chosen` event broadcasts only the `playerId`, never the indices.
-- When the last player completes `choose_peek`, the engine emits `peek_phase_ended` and flips `status` to `'playing'`.
+- `choose_peek` — atomic: all indices in one move (bots use this).
+- `peek_one` — incremental: one index per move, accumulating until the quota is hit (the UI uses this for tap-by-tap reveals). Each `peek_one` emits a `peek_one_chosen` event.
+
+Rules:
+
+- Peek order is not enforced — every not-yet-peeked player has a legal peek move simultaneously.
+- The chosen indices are private. The `peek_chosen` event broadcasts only the `playerId`, never the indices. The `peek_one_chosen` event carries `handIndex` + `cardId` for the peeker; the edge-function redaction layer nulls **both** fields for every other viewer (see `docs/SCHEMA.md` § Hidden-info contract).
+- `PlayerViewEntry.hasPeeked` exposes each player's completion status publicly (boolean only — never which slots), so UIs can show "waiting on N players" without leaking picks.
+- When the last player completes their quota, the engine emits `peek_phase_ended` and flips `status` to `'playing'`.
 - If `rules.initialPeekCount === 0`, `newGame` starts directly in `'playing'`.
 
 ## A turn (the five options)
@@ -268,6 +274,7 @@ Visible:
 - The viewer's own peeked slots and any opponent slots the viewer has learned via powers.
 - The top of the discard pile (always public).
 - The viewer's own drawn card (only the drawer sees `drawnCardId`).
+- Each player's `hasPeeked` flag (peek-phase completion status — boolean only, never the indices).
 - All public game scalars: `status`, `currentPlayerId`, `pabloCalledBy`, `pendingPower`, `deckCount`, `rules`, full 52-card `catalog`.
 
 ## Public API (what the engine exports)
@@ -275,8 +282,8 @@ Visible:
 ```ts
 // types.ts — all types are readonly and discriminated where applicable.
 export type GameState = { ... };
-export type Move = { ... };          // 12 variants
-export type GameEvent = { ... };     // 15 variants
+export type Move = { ... };          // 13 variants
+export type GameEvent = { ... };     // 16 variants
 export type PlayerView = { ... };
 export type GameRules = { ... };
 export type MatchKind = 'drawn' | 'hand' | 'discard';
@@ -307,7 +314,8 @@ All functions are pure and synchronous. No `Date.now()`, no `Math.random()` — 
 
 ### `Move` variants
 
-- `choose_peek` — peek_phase only; pick `initialPeekCount` indices.
+- `choose_peek` — peek_phase only; pick `initialPeekCount` indices atomically.
+- `peek_one` — peek_phase only; pick one index per move until the quota is reached.
 - `draw_from_deck` — start of turn (current player); status='playing', `drawn===null`, `pendingPower===null`.
 - `swap_drawn` — after drawing.
 - `discard_drawn` — after drawing; activates power if the card has one.
@@ -330,7 +338,8 @@ All functions are pure and synchronous. No `Date.now()`, no `Math.random()` — 
 - `deck_reshuffled`
 - `round_ended { scores, winners }`
 - `power_activated { rank, power, playerId }`
-- `peek_chosen { playerId }` — fires after each `choose_peek`. Indices are intentionally omitted.
+- `peek_chosen { playerId }` — fires when a player completes their peek quota. Indices are intentionally omitted.
+- `peek_one_chosen { playerId, handIndex, cardId }` — fires for every individual `peek_one`. `handIndex` + `cardId` are redacted to `null` for all viewers other than the peeker.
 - `peek_phase_ended` — fires once when the last player peeks.
 - `match_succeeded { playerId, kind, slotIndices, discardedCardIds }`
 - `match_failed { playerId, kind, slotIndices, reason }`

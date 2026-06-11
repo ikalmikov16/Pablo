@@ -53,15 +53,16 @@ export const tokens = {
       slotGhostBorder: 'rgba(45,106,79,0.4)',
       slotSelected: 'rgba(45,106,79,0.18)',
       currentTurnTint: 'rgba(45,106,79,0.06)',
+      /** Peak of the active-seat breathing pulse. */
+      currentTurnTintStrong: 'rgba(45,106,79,0.16)',
       winnerRowTint: 'rgba(45,106,79,0.08)',
       deckBadgeBg: 'rgba(0,0,0,0.55)',
       toastBg: 'rgba(30,30,30,0.88)',
+      announcementBg: 'rgba(255,255,255,0.85)',
     },
     accent: {
       pabloOnTurn: '#B23A48',
       pabloOffTurn: '#D88C9A',
-      penaltyTint: 'rgba(178,58,72,0.12)',
-      powerActive: '#C77D08',
       pabloSubText: 'rgba(255,255,255,0.8)',
     },
     motion: {
@@ -91,8 +92,6 @@ export const tokens = {
       lift: { peakScale: 1.05, peakShadow: 0.18 },
     },
     duration: {
-      /** Legacy placeholder drain (Package B uses flight completion). */
-      eventDrain: 300,
       /** Actor focus before an opponent swap (ms). */
       swapFocusMs: 220,
       /** Target-slot spotlight before swap exchange (ms). */
@@ -137,8 +136,6 @@ export const tokens = {
       flightOverlay: 45,
     },
     size: {
-      /** Width of the mini cards in opponent rows (legacy; prefer opponentCardMd). */
-      miniCard: 44,
       /** Max width for the local player's hand grid. */
       ownCardMax: 68,
       /** Opponent hand cards when 1–2 opponents are seated. */
@@ -147,6 +144,8 @@ export const tokens = {
       opponentCardSm: 48,
       /** Deck / discard pile card width at table centre. */
       deckCard: 88,
+      /** Cards inside the peek overlay grid. */
+      peekCard: 80,
       /** Drawn-card hero in the draw-flow sheet (larger than table landing zone). */
       drawnFlowCard: 120,
       /** Cards in the end-of-round score sheet. */
@@ -174,6 +173,8 @@ export const tokens = {
       tableDimOpacity: 0.22,
       spotlightBorderWidth: 3,
       spotlightBorderColor: '#2D6A4F',
+      /** Fully-transparent variant of spotlightBorderColor for interpolation endpoints. */
+      spotlightBorderTransparent: 'rgba(45,106,79,0)',
       /** Match PlayingCard corner radius (W × this fraction, clamped in cardSizes). */
       ringRadiusFraction: 0.075,
     },

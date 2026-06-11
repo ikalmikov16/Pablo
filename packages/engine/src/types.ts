@@ -323,6 +323,12 @@ export type PlayerViewEntry = {
   readonly knownCards: Readonly<Partial<Record<number, CardId>>>;
   readonly score: number;
   readonly isCurrentTurn: boolean;
+  /**
+   * Public scalar: has this player completed their initial peek quota?
+   * Always true outside peek_phase. Exposes no card or index information —
+   * it lets clients show per-seat "still peeking…" progress.
+   */
+  readonly hasPeeked: boolean;
 };
 
 export type RoundScore = {

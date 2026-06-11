@@ -124,7 +124,7 @@ function FlightCard({ flight, catalog, onComplete }: FlightCardProps) {
       width: renderW,
       height: renderH,
       zIndex: flight.zRank,
-      shadowColor: '#000',
+      shadowColor: tokens.shadow.card.shadowColor,
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity,
       shadowRadius: 8,

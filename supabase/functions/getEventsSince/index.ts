@@ -72,7 +72,8 @@ Deno.serve(async (req: Request) => {
 
   const rawEvents = (rows ?? []).map((r: { event: unknown }) => r.event as GameEvent);
 
-  // Redact peeked.cardId for events not belonging to this viewer
+  // Redact private peek payloads (peeked.cardId, peek_one_chosen.cardId/handIndex)
+  // for events not belonging to this viewer
   const events = redactEventsFor(uid, rawEvents);
 
   const lastEventVersion =

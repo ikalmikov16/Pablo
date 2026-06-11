@@ -42,7 +42,7 @@ describe('createMockClient — basic flow', () => {
     if (result.ok) {
       expect(result.data.hostId).toBe(HUMAN);
       expect(result.data.members).toContain(HUMAN);
-      expect(result.data.code).toHaveLength(4);
+      expect(result.data.code).toHaveLength(6);
     }
   });
 

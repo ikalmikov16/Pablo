@@ -13,15 +13,7 @@ import { planFlights, type PlanFlightsOptions } from './flightPlanner';
 import type { ChoreographyCue, Flight, ToastCue } from './flightTypes';
 import { anchorKey } from './flightTypes';
 
-export type SlotSelection =
-  | { readonly kind: 'none' }
-  | { readonly kind: 'one'; readonly index: number }
-  | { readonly kind: 'two'; readonly indexA: number; readonly indexB: number };
-
 export type UiState = {
-  readonly selection: SlotSelection;
-  readonly dragInFlight: boolean;
-  readonly peekPicks: ReadonlyArray<number>;
   readonly endOfRoundVisible: boolean;
   readonly peekOverlayVisible: boolean;
   readonly peekJustHappened: boolean;
@@ -32,6 +24,12 @@ export type UiState = {
     readonly handIndex: number;
   } | null;
   readonly toast: { readonly message: string; readonly id: number } | null;
+  /**
+   * Persistent "last action" line shown in the AnnouncementBanner. Unlike
+   * toasts it never auto-dismisses — it's the memory aid for what just
+   * happened on the table.
+   */
+  readonly announcement: { readonly message: string; readonly id: number } | null;
 };
 
 export type AnimQueueState = {
@@ -69,15 +67,10 @@ export type GameStoreActions = {
   dequeueEvents(): void;
   removeFlight(id: string): void;
   disposeFlightTimers(): void;
-  setSelection(sel: SlotSelection): void;
-  clearSelection(): void;
-  setDragInFlight(v: boolean): void;
-  addPeekPick(index: number): void;
-  clearPeekPicks(): void;
   showToast(message: string): void;
+  /** Pin a message to the persistent announcement line (no toast). */
+  announce(message: string): void;
   dismissToast(): void;
-  setEndOfRoundVisible(v: boolean): void;
-  setPeekOverlayVisible(v: boolean): void;
   setPeekJustHappened(v: boolean): void;
   setLastPeekReveal(reveal: UiState['lastPeekReveal']): void;
   setSubmitting(v: boolean): void;
@@ -87,9 +80,6 @@ export type GameStoreActions = {
 export type GameStore = GameStoreState & GameStoreActions;
 
 const defaultUi: UiState = {
-  selection: { kind: 'none' },
-  dragInFlight: false,
-  peekPicks: [],
   endOfRoundVisible: false,
   peekOverlayVisible: false,
   peekJustHappened: false,
@@ -97,6 +87,7 @@ const defaultUi: UiState = {
   networkError: false,
   lastPeekReveal: null,
   toast: null,
+  announcement: null,
 };
 
 function emptyChoreographyState(): ChoreographyUiState {
@@ -227,7 +218,7 @@ export function createGameStore() {
       for (const toast of toasts) {
         trackTimer(
           setTimeout(() => {
-            get().showToast(toast.message);
+            get().announce(toast.message);
           }, toast.delayMs),
         );
       }
@@ -257,7 +248,7 @@ export function createGameStore() {
       if (!view) return;
       for (const event of events) {
         if (event.type === 'pablo_called') {
-          get().showToast(
+          get().announce(
             t('game.pablo.calledToast', { name: resolveDisplayName(view, event.playerId) }),
           );
         }
@@ -391,44 +382,18 @@ export function createGameStore() {
         resetChoreographyUi();
       },
 
-      setSelection(sel) {
-        set((s) => ({ ui: { ...s.ui, selection: sel } }));
-      },
-
-      clearSelection() {
-        set((s) => ({ ui: { ...s.ui, selection: { kind: 'none' } } }));
-      },
-
-      setDragInFlight(v) {
-        set((s) => ({ ui: { ...s.ui, dragInFlight: v } }));
-      },
-
-      addPeekPick(index) {
-        set((s) => {
-          if (s.ui.peekPicks.includes(index)) return {};
-          return { ui: { ...s.ui, peekPicks: [...s.ui.peekPicks, index] } };
-        });
-      },
-
-      clearPeekPicks() {
-        set((s) => ({ ui: { ...s.ui, peekPicks: [] } }));
-      },
-
       showToast(message) {
         const id = toastSeq++;
         set((s) => ({ ui: { ...s.ui, toast: { message, id } } }));
       },
 
+      announce(message) {
+        const id = toastSeq++;
+        set((s) => ({ ui: { ...s.ui, announcement: { message, id } } }));
+      },
+
       dismissToast() {
         set((s) => ({ ui: { ...s.ui, toast: null } }));
-      },
-
-      setEndOfRoundVisible(v) {
-        set((s) => ({ ui: { ...s.ui, endOfRoundVisible: v } }));
-      },
-
-      setPeekOverlayVisible(v) {
-        set((s) => ({ ui: { ...s.ui, peekOverlayVisible: v } }));
       },
 
       setPeekJustHappened(v) {

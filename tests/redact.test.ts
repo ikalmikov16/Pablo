@@ -104,6 +104,39 @@ describe('redactEventsFor', () => {
     expect(result[0]).toEqual(ev);
   });
 
+  test('peek_one_chosen by viewer passes through with cardId and handIndex intact', () => {
+    const ev: GameEvent = {
+      type: 'peek_one_chosen',
+      playerId: VIEWER,
+      handIndex: 2,
+      cardId: '09D',
+    };
+    const result = redactEventsFor(VIEWER, [ev]);
+    const out = result[0] as { cardId: unknown; handIndex: unknown };
+    expect(out.cardId).toBe('09D');
+    expect(out.handIndex).toBe(2);
+  });
+
+  test('peek_one_chosen by other gets cardId AND handIndex replaced with null', () => {
+    const ev: GameEvent = {
+      type: 'peek_one_chosen',
+      playerId: OTHER,
+      handIndex: 3,
+      cardId: '11C',
+    };
+    const result = redactEventsFor(VIEWER, [ev]);
+    const out = result[0] as {
+      type: string;
+      playerId: string;
+      cardId: unknown;
+      handIndex: unknown;
+    };
+    expect(out.type).toBe('peek_one_chosen');
+    expect(out.playerId).toBe(OTHER);
+    expect(out.cardId).toBeNull();
+    expect(out.handIndex).toBeNull();
+  });
+
   test('peek_phase_ended passes through unchanged', () => {
     const ev: GameEvent = { type: 'peek_phase_ended' };
     const result = redactEventsFor(VIEWER, [ev]);

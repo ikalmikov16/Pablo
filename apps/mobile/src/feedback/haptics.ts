@@ -53,3 +53,13 @@ export function hapticForMoveError(): void {
     // Haptic engine unavailable — silently skip.
   }
 }
+
+/** Soft tap when the turn passes to the local player. */
+export function hapticForTurnStart(): void {
+  if (Platform.OS === 'web') return;
+  try {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  } catch {
+    // Haptic engine unavailable — silently skip.
+  }
+}

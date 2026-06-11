@@ -7,10 +7,12 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
+  cancelAnimation,
   interpolateColor,
   LinearTransition,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
@@ -41,7 +43,7 @@ type Props = {
 
 const SHAKE_STEP = timingFor('snap', 'instant');
 const FOCUS_BG = tokens.game.surface.slotSelected;
-const FOCUS_BG_OFF = 'rgba(45,106,79,0)';
+const FOCUS_BG_OFF = tokens.game.choreography.spotlightBorderTransparent;
 
 function OpponentSlotWrapper({
   entryId,
@@ -95,7 +97,10 @@ function OpponentSlotWrapper({
       : interpolateColor(
           ringOpacity.value,
           [0, 1],
-          ['rgba(45,106,79,0)', tokens.game.choreography.spotlightBorderColor],
+          [
+            tokens.game.choreography.spotlightBorderTransparent,
+            tokens.game.choreography.spotlightBorderColor,
+          ],
         ),
     borderRadius: slotRadius,
   }));
@@ -128,6 +133,36 @@ export function OpponentSeat({ entry, displayName, cardWidth, isCurrent }: Props
   const seatAnchor = useAnchor({ kind: 'opponentSeat', playerId: entry.id });
   const focusIntensity = useSharedValue(0);
   useActorFocusIntensity(actorFocused, focusIntensity);
+
+  // Breathing tint while it's this opponent's turn — makes the active seat
+  // readable at a glance without being distracting.
+  const turnPulse = useSharedValue(0);
+  useEffect(() => {
+    if (isCurrent) {
+      turnPulse.value = withRepeat(
+        withSequence(
+          withTiming(1, timingFor('drift', 'deliberate')),
+          withTiming(0.35, timingFor('drift', 'deliberate')),
+        ),
+        -1,
+      );
+    } else {
+      cancelAnimation(turnPulse);
+      turnPulse.value = withTiming(0, timingFor('drift', 'quick'));
+    }
+    return () => cancelAnimation(turnPulse);
+  }, [isCurrent, turnPulse]);
+
+  const turnPulseStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      turnPulse.value,
+      [0, 1],
+      [
+        tokens.game.choreography.spotlightBorderTransparent,
+        tokens.game.surface.currentTurnTintStrong,
+      ],
+    ),
+  }));
 
   const slots = Array.from({ length: entry.handSize }, (_, index) => ({
     index,
@@ -171,7 +206,7 @@ export function OpponentSeat({ entry, displayName, cardWidth, isCurrent }: Props
   }));
 
   return (
-    <View style={[styles.seat, isCurrent && styles.current]}>
+    <Animated.View style={[styles.seat, isCurrent && styles.current, turnPulseStyle]}>
       <View
         ref={seatAnchor.ref}
         onLayout={seatAnchor.onLayout}
@@ -193,7 +228,7 @@ export function OpponentSeat({ entry, displayName, cardWidth, isCurrent }: Props
           />
         </Animated.View>
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -218,7 +253,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   current: {
-    backgroundColor: tokens.game.surface.currentTurnTint,
+    // backgroundColor is driven by the animated turn pulse.
     borderRadius: tokens.radius.md,
     padding: tokens.space.xs,
   },

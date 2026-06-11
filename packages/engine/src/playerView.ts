@@ -28,6 +28,11 @@ export function computePlayerView(state: GameState, playerId: PlayerId): PlayerV
     const hand = state.hands[id] ?? [];
     const theirKnowledge = myKnowledge[id] ?? {};
 
+    // Public progress flag for the peek phase. Derived from the player's own
+    // self-knowledge count — never from indices — so nothing private leaks.
+    const ownPeekCount = Object.keys(state.knownCards[id]?.[id] ?? {}).length;
+    const hasPeeked = state.status !== 'peek_phase' || ownPeekCount >= state.rules.initialPeekCount;
+
     const knownCards: Partial<Record<number, string>> = {};
     if (state.status === 'ended') {
       hand.forEach((cardId, idx) => {
@@ -51,6 +56,7 @@ export function computePlayerView(state: GameState, playerId: PlayerId): PlayerV
       knownCards,
       score: state.scores[id] ?? 0,
       isCurrentTurn: id === currentPlayerInTurn,
+      hasPeeked,
     };
   });
 

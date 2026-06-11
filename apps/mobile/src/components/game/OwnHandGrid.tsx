@@ -23,7 +23,6 @@ import {
   selectMatchFailedShakeSlots,
   selectMyHandSlotsDisplay,
   selectSourceAnchorKeys,
-  selectSelection,
   selectSelf,
   selectSpotlightAnchorKeys,
 } from '../../store/selectors';
@@ -40,14 +39,11 @@ type Props = {
   readonly gridWidth: number;
   readonly catalog: Readonly<Record<string, Card>>;
   readonly cardWidth?: number;
-  readonly onSlotTap?: (index: number) => void;
-  readonly highlightIndices?: ReadonlyArray<number>;
 };
 
-export function OwnHandGrid({ gridWidth, catalog, cardWidth, onSlotTap, highlightIndices }: Props) {
+export function OwnHandGrid({ gridWidth, catalog, cardWidth }: Props) {
   const selfId = useGameStore(selectSelf);
   const handSlots = useGameStoreShallow(selectMyHandSlotsDisplay);
-  const selection = useGameStore(selectSelection);
   const destKeys = useGameStore(selectDestinationAnchorKeys);
   const sourceKeys = useGameStore(selectSourceAnchorKeys);
   const shakeSlots = useGameStore((s) =>
@@ -59,19 +55,6 @@ export function OwnHandGrid({ gridWidth, catalog, cardWidth, onSlotTap, highligh
     index: s.index,
     card: s.cardId ? (catalog[s.cardId] ?? FACE_DOWN_CARD) : null,
   }));
-
-  const selectedIndices = React.useMemo(() => {
-    if (selection.kind === 'one') return [selection.index];
-    if (selection.kind === 'two') return [selection.indexA, selection.indexB];
-    return [];
-  }, [selection]);
-
-  const isHighlighted = useCallback(
-    (idx: number) => highlightIndices?.includes(idx) ?? false,
-    [highlightIndices],
-  );
-
-  const isSelected = useCallback((idx: number) => selectedIndices.includes(idx), [selectedIndices]);
 
   const layoutTransition = LinearTransition.springify().damping(18).stiffness(200);
 
@@ -85,15 +68,13 @@ export function OwnHandGrid({ gridWidth, catalog, cardWidth, onSlotTap, highligh
           sourceKeys.has(anchorKey({ kind: 'ownSlot', index: slot.index }))
         }
         shake={shakeSlots.includes(slot.index)}
-        isSelected={isSelected(slot.index)}
-        isHighlighted={isHighlighted(slot.index)}
         spotlight={spotlightKeys.has(anchorKey({ kind: 'ownSlot', index: slot.index }))}
         layoutTransition={layoutTransition}
       >
         {children}
       </OwnSlotWrapper>
     ),
-    [destKeys, isHighlighted, isSelected, layoutTransition, shakeSlots, sourceKeys, spotlightKeys],
+    [destKeys, layoutTransition, shakeSlots, sourceKeys, spotlightKeys],
   );
 
   return (
@@ -102,7 +83,6 @@ export function OwnHandGrid({ gridWidth, catalog, cardWidth, onSlotTap, highligh
       gridWidth={gridWidth}
       cardWidth={cardWidth}
       maxCardWidth={tokens.game.size.ownCardMax}
-      onTap={onSlotTap ? (s) => onSlotTap(s.index) : undefined}
       slotWrapper={slotWrapper}
     />
   );
@@ -114,8 +94,6 @@ function OwnSlotWrapper({
   size,
   ghosted,
   shake,
-  isSelected,
-  isHighlighted,
   spotlight,
   layoutTransition,
 }: {
@@ -124,8 +102,6 @@ function OwnSlotWrapper({
   readonly size: { readonly width: number; readonly height: number };
   readonly ghosted: boolean;
   readonly shake: boolean;
-  readonly isSelected: boolean;
-  readonly isHighlighted: boolean;
   readonly spotlight: boolean;
   readonly layoutTransition: ReturnType<typeof LinearTransition.springify>;
 }) {
@@ -156,7 +132,10 @@ function OwnSlotWrapper({
       : interpolateColor(
           ringOpacity.value,
           [0, 1],
-          ['rgba(45,106,79,0)', tokens.game.choreography.spotlightBorderColor],
+          [
+            tokens.game.choreography.spotlightBorderTransparent,
+            tokens.game.choreography.spotlightBorderColor,
+          ],
         ),
     borderRadius: slotRadius,
   }));
@@ -170,13 +149,7 @@ function OwnSlotWrapper({
       ref={ref}
       onLayout={onLayout}
       layout={layoutTransition}
-      style={[
-        wrapperStyle,
-        styles.slotWrapper,
-        size,
-        isSelected && styles.selected,
-        isHighlighted && styles.highlighted,
-      ]}
+      style={[wrapperStyle, styles.slotWrapper, size]}
       collapsable={false}
     >
       <Animated.View style={[StyleSheet.absoluteFillObject, contentStyle]}>
@@ -188,16 +161,4 @@ function OwnSlotWrapper({
 
 const styles = StyleSheet.create({
   slotWrapper: {},
-  selected: {
-    shadowColor: tokens.color.accent.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 6,
-    elevation: 6,
-    backgroundColor: tokens.game.surface.slotSelected,
-  },
-  highlighted: {
-    borderWidth: 2,
-    borderColor: tokens.color.accent.primary,
-  },
 });

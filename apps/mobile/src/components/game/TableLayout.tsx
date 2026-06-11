@@ -19,11 +19,6 @@ type Props = {
   readonly currentPlayerId: PlayerId | null;
   readonly deck: React.ReactNode;
   readonly ownHand: React.ReactNode;
-  /**
-   * Optional highlight in the drawn landing zone (flight target). The draw-flow
-   * sheet shows the large hero card; this slot stays for anchor measurement.
-   */
-  readonly drawnPreview?: React.ReactNode;
 };
 
 function opponentCount(n: number): OpponentCount {
@@ -32,24 +27,14 @@ function opponentCount(n: number): OpponentCount {
   return 3;
 }
 
-function DrawnLandingZone({ children }: { readonly children?: React.ReactNode }) {
+/** Invisible flight-target anchor where drawn cards land. */
+function DrawnLandingZone() {
   const { ref, onLayout } = useAnchor({ kind: 'drawn' });
 
-  return (
-    <View ref={ref} onLayout={onLayout} style={styles.drawnZone} collapsable={false}>
-      {children}
-    </View>
-  );
+  return <View ref={ref} onLayout={onLayout} style={styles.drawnZone} collapsable={false} />;
 }
 
-export function TableLayout({
-  opponents,
-  displayName,
-  currentPlayerId,
-  deck,
-  ownHand,
-  drawnPreview,
-}: Props) {
+export function TableLayout({ opponents, displayName, currentPlayerId, deck, ownHand }: Props) {
   const [size, setSize] = useState({ w: 0, h: 0 });
 
   function onLayout(e: LayoutChangeEvent) {
@@ -146,7 +131,7 @@ export function TableLayout({
           ]}
           pointerEvents="none"
         >
-          <DrawnLandingZone>{drawnPreview}</DrawnLandingZone>
+          <DrawnLandingZone />
         </View>
       )}
     </View>

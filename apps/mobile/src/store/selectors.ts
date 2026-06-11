@@ -17,8 +17,7 @@ import {
   type PlayerViewEntry,
   legalMoves as engineLegalMoves,
 } from '@pablo/engine';
-import type { GameStore, SlotSelection } from './gameStore';
-import { anchorKey, type AnchorId } from './flightTypes';
+import type { GameStore } from './gameStore';
 import { destinationKeysFromFlights, sourceKeysFromFlights, type Flight } from './flightTypes';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -84,10 +83,6 @@ export function selectView(s: GameStore): PlayerView | null {
 
 function resolveDisplayView(s: GameStore): PlayerView | null {
   return s.displayView ?? s.view;
-}
-
-export function selectDisplayView(s: GameStore): PlayerView | null {
-  return resolveDisplayView(s);
 }
 
 export function selectSelf(s: GameStore): PlayerId | null {
@@ -161,12 +156,6 @@ export function selectMyHandSlotsDisplay(s: GameStore): ReadonlyArray<HandSlot> 
   const v = resolveDisplayView(s);
   if (!v) return EMPTY_HAND_SLOTS;
   return handSlotsForView(v);
-}
-
-export function selectMyHandSize(s: GameStore): number {
-  const v = s.view;
-  if (!v) return 0;
-  return v.players.find((p) => p.id === v.self)?.handSize ?? 0;
 }
 
 const EMPTY_OPPONENTS: ReadonlyArray<PlayerViewEntry> = [];
@@ -273,13 +262,6 @@ export function selectCanDraw(s: GameStore): boolean {
   return legal.some((m) => m.type === 'draw_from_deck');
 }
 
-export function selectCanCallPablo(s: GameStore): boolean {
-  const v = s.view;
-  if (!v) return false;
-  const legal = getLegalMovesForPlayer(v, v.self);
-  return legal.some((m) => m.type === 'call_pablo');
-}
-
 const EMPTY_HAND_PAIRS: ReadonlyArray<readonly [HandIndex, HandIndex]> = [];
 const matchHandPairsCache = new WeakMap<
   PlayerView,
@@ -363,24 +345,8 @@ export function selectPowerOverlayVisible(s: GameStore): boolean {
 
 // ─── Peek-phase selectors ─────────────────────────────────────────────────────
 
-export function selectIsPeekPhase(s: GameStore): boolean {
-  return s.view?.status === 'peek_phase';
-}
-
 export function selectPeekRequired(s: GameStore): number {
   return s.view?.rules.initialPeekCount ?? 0;
-}
-
-export function selectHasLocalPlayerPeeked(s: GameStore): boolean {
-  const v = s.view;
-  if (!v) return false;
-  const me = v.players.find((p) => p.id === v.self);
-  if (!me) return false;
-  return Object.keys(me.knownCards).length >= v.rules.initialPeekCount;
-}
-
-export function selectPeekPicks(s: GameStore): ReadonlyArray<number> {
-  return s.ui.peekPicks;
 }
 
 // ─── Discard / deck selectors ─────────────────────────────────────────────────
@@ -399,12 +365,12 @@ export function selectDrawnCardId(s: GameStore): string | null {
 
 // ─── UI state selectors ───────────────────────────────────────────────────────
 
-export function selectSelection(s: GameStore): SlotSelection {
-  return s.ui.selection;
-}
-
 export function selectToast(s: GameStore): GameStore['ui']['toast'] {
   return s.ui.toast;
+}
+
+export function selectAnnouncement(s: GameStore): GameStore['ui']['announcement'] {
+  return s.ui.announcement;
 }
 
 export function selectEndOfRoundVisible(s: GameStore): boolean {
@@ -499,11 +465,6 @@ export function selectSourceAnchorKeys(s: GameStore): ReadonlySet<string> {
   return keys;
 }
 
-/** Event batch currently being animated (front of queue). */
-export function selectCurrentEventBatch(s: GameStore): ReadonlyArray<GameEvent> {
-  return s.animQueue.pending[0] ?? [];
-}
-
 /** Hand slot indices that should shake for `playerId` in the active batch. */
 export function selectMatchFailedShakeSlots(
   s: GameStore,
@@ -550,8 +511,4 @@ export function selectDiscardPulse(s: GameStore): boolean {
 
 export function selectIsTableDimmed(s: GameStore): boolean {
   return s.choreography.tableDimmed;
-}
-
-export function selectSlotIsSpotlighted(s: GameStore, id: AnchorId): boolean {
-  return s.choreography.spotlightKeys.has(anchorKey(id));
 }

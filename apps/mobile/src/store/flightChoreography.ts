@@ -285,6 +285,125 @@ export function planMatchDiscardToasts(
   });
 }
 
+// ─── Announcement toasts for events that previously had no text feedback ─────
+
+export function planMatchFailedToast(
+  toasts: ToastCue[],
+  view: PlayerView,
+  batchId: string,
+  eventIndex: number,
+  event: Extract<GameEvent, { type: 'match_failed' }>,
+): void {
+  const name = toastName(view, event.playerId);
+  toasts.push({
+    id: `${batchId}:matchfail:${eventIndex}`,
+    delayMs: flightShakeMs,
+    message:
+      event.reason === 'min_hand_size'
+        ? t('game.flight.matchFailMinHand', { name })
+        : t('game.flight.matchFailWrongRank', { name }),
+  });
+}
+
+export function planPowerActivatedFeedback(
+  cues: ChoreographyCue[],
+  toasts: ToastCue[],
+  view: PlayerView,
+  batchId: string,
+  eventIndex: number,
+  event: Extract<GameEvent, { type: 'power_activated' }>,
+): void {
+  toasts.push({
+    id: `${batchId}:power:${eventIndex}`,
+    delayMs: 0,
+    message: t('game.flight.powerToast', {
+      name: toastName(view, event.playerId),
+      power: t(`game.power.${event.power}`),
+    }),
+  });
+
+  // Pull the eye to the seat that just unlocked a power.
+  if (event.playerId !== view.self) {
+    cues.push({
+      type: 'actorFocus',
+      playerId: event.playerId,
+      delayMs: 0,
+      durationMs: swapFocusMs,
+    });
+  }
+}
+
+/**
+ * Announce power peeks by other players, with a spotlight on the targeted
+ * slot so the eye lands where the information leaked. The local player
+ * already sees their own reveal overlay, so self-acting events are silent.
+ */
+export function planPeekedFeedback(
+  cues: ChoreographyCue[],
+  toasts: ToastCue[],
+  view: PlayerView,
+  batchId: string,
+  eventIndex: number,
+  event: Extract<GameEvent, { type: 'peeked' }>,
+): void {
+  if (event.playerId === view.self) return;
+  const name = toastName(view, event.playerId);
+  const message =
+    event.targetPlayer === event.playerId
+      ? t('game.flight.peekSelfToast', { name })
+      : event.targetPlayer === view.self
+        ? t('game.flight.peekYourCardToast', { name })
+        : t('game.flight.peekOpponentToast', {
+            name,
+            target: toastName(view, event.targetPlayer),
+          });
+  toasts.push({ id: `${batchId}:peeked:${eventIndex}`, delayMs: 0, message });
+
+  cues.push({
+    type: 'spotlight',
+    anchor:
+      event.targetPlayer === view.self
+        ? ownSlot(event.handIndex)
+        : opponentSlot(event.targetPlayer, event.handIndex),
+    delayMs: 0,
+    durationMs: swapSpotlightMs + swapSettleMs,
+    tone: 'swap',
+  });
+}
+
+export function planBlindSwapToast(
+  toasts: ToastCue[],
+  view: PlayerView,
+  batchId: string,
+  eventIndex: number,
+  event: Extract<GameEvent, { type: 'swapped_blind' }>,
+  delayMs: number,
+): void {
+  const name = toastName(view, event.playerId);
+  const message =
+    event.targetPlayer === view.self
+      ? t('game.flight.blindSwapYouToast', { name })
+      : t('game.flight.blindSwapToast', {
+          name,
+          target: toastName(view, event.targetPlayer),
+        });
+  toasts.push({ id: `${batchId}:blindswap:${eventIndex}`, delayMs, message });
+}
+
+export function planReshuffledFeedback(
+  cues: ChoreographyCue[],
+  toasts: ToastCue[],
+  batchId: string,
+  eventIndex: number,
+): void {
+  toasts.push({
+    id: `${batchId}:reshuffle:${eventIndex}`,
+    delayMs: 0,
+    message: t('game.flight.reshuffledToast'),
+  });
+  cues.push({ type: 'discardPulse', delayMs: 0, durationMs: swapSettleMs });
+}
+
 export function addMatchSpotlights(
   cues: ChoreographyCue[],
   self: boolean,

@@ -167,9 +167,11 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
   async function leaveRoom(opts: { roomId: RoomId }): Promise<ClientResult<void>> {
     const room = rooms.get(opts.roomId);
     if (!room) return fail('not_found');
-    // Cancel pending bot moves for any games in this room.
-    for (const { record } of games.values()) {
-      botScheduler.cancelAll(record);
+    // Cancel pending bot moves for THIS room's game only — other rooms'
+    // games keep their schedulers running.
+    if (room.currentGameId) {
+      const entry = games.get(room.currentGameId);
+      if (entry) botScheduler.cancelAll(entry.record);
     }
     rooms.delete(opts.roomId);
     if (activeSession?.roomId === opts.roomId) {

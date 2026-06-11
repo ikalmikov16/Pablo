@@ -2,13 +2,13 @@ import { describe, expect, test } from 'bun:test';
 import { DEFAULT_RULES } from '@pablo/engine';
 import { makeRng } from '@pablo/engine';
 
-import { BOT_IDS, BOT_NAMES, botName, generateRoomCode, isBotId, makeRoom } from './room';
+import { BOT_IDS, botIndex, generateRoomCode, isBotId, makeRoom } from './room';
 
 describe('generateRoomCode', () => {
-  test('returns 4 uppercase alphanumeric characters', () => {
+  test('returns 6 uppercase alphanumeric characters (matches server codes)', () => {
     const rng = makeRng('test-seed');
     const code = generateRoomCode(rng);
-    expect(code).toHaveLength(4);
+    expect(code).toHaveLength(6);
     expect(/^[A-Z0-9]+$/.test(code)).toBe(true);
     // No ambiguous chars
     expect(code).not.toMatch(/[O01I]/);
@@ -41,15 +41,15 @@ describe('isBotId', () => {
   });
 });
 
-describe('botName', () => {
-  test('returns expected names for bot ids', () => {
-    expect(botName(BOT_IDS[0])).toBe(BOT_NAMES[0]);
-    expect(botName(BOT_IDS[1])).toBe(BOT_NAMES[1]);
-    expect(botName(BOT_IDS[2])).toBe(BOT_NAMES[2]);
+describe('botIndex', () => {
+  test('returns 1-based index for bot ids', () => {
+    expect(botIndex(BOT_IDS[0])).toBe(1);
+    expect(botIndex(BOT_IDS[1])).toBe(2);
+    expect(botIndex(BOT_IDS[2])).toBe(3);
   });
 
-  test('falls back to id for unknown player', () => {
-    expect(botName('human')).toBe('human');
+  test('returns null for non-bots', () => {
+    expect(botIndex('human')).toBeNull();
   });
 });
 

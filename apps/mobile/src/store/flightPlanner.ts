@@ -9,9 +9,14 @@ import {
   addMatchSpotlights,
   flightShakeMs,
   matchDiscardMs,
+  planBlindSwapToast,
   planLoneDiscard,
   planMatchDiscardToasts,
+  planMatchFailedToast,
   planOpponentSwap,
+  planPeekedFeedback,
+  planPowerActivatedFeedback,
+  planReshuffledFeedback,
   planSelfSwap,
   type FlightPushFn,
 } from './flightChoreography';
@@ -738,6 +743,23 @@ export function planFlights(
 
       case 'swapped_blind':
         planSwappedBlind(out, snapshot, batchId, eventIndex, view, event);
+        planBlindSwapToast(toasts, view, batchId, eventIndex, event, flightSlow);
+        break;
+
+      case 'match_failed':
+        planMatchFailedToast(toasts, view, batchId, eventIndex, event);
+        break;
+
+      case 'power_activated':
+        planPowerActivatedFeedback(cues, toasts, view, batchId, eventIndex, event);
+        break;
+
+      case 'peeked':
+        planPeekedFeedback(cues, toasts, view, batchId, eventIndex, event);
+        break;
+
+      case 'deck_reshuffled':
+        planReshuffledFeedback(cues, toasts, batchId, eventIndex);
         break;
 
       default:

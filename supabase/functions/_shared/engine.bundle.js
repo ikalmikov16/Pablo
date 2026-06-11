@@ -912,6 +912,8 @@ function computePlayerView(state, playerId) {
   const players = state.players.map((id) => {
     const hand = state.hands[id] ?? [];
     const theirKnowledge = myKnowledge[id] ?? {};
+    const ownPeekCount = Object.keys(state.knownCards[id]?.[id] ?? {}).length;
+    const hasPeeked = state.status !== "peek_phase" || ownPeekCount >= state.rules.initialPeekCount;
     const knownCards = {};
     if (state.status === "ended") {
       hand.forEach((cardId2, idx) => {
@@ -930,7 +932,8 @@ function computePlayerView(state, playerId) {
       handSize: hand.length,
       knownCards,
       score: state.scores[id] ?? 0,
-      isCurrentTurn: id === currentPlayerInTurn
+      isCurrentTurn: id === currentPlayerInTurn,
+      hasPeeked
     };
   });
   const discardTop = state.discard.length > 0 ? state.discard[state.discard.length - 1] : null;

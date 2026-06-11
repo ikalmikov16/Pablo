@@ -246,6 +246,104 @@ describe('planFlights', () => {
     expect(plan.flights).toHaveLength(0);
   });
 
+  test('match_failed plans an announcement toast after the shake', () => {
+    let state = playingGame();
+    const draw = legalMoves(state, HUMAN).find((m) => m.type === 'draw_from_deck');
+    if (!draw) throw new Error('no draw');
+    let r = applyMove(state, draw);
+    if (!r.ok) throw new Error('draw failed');
+    state = r.state;
+    const drawnRank = state.cardCatalog[state.drawn!.cardId]!.rank;
+    const hand = state.hands[HUMAN]!;
+    let targetIdx = 0;
+    for (let i = 0; i < hand.length; i++) {
+      if (state.cardCatalog[hand[i]!]!.rank !== drawnRank) {
+        targetIdx = i;
+        break;
+      }
+    }
+    r = applyMove(state, { type: 'match_drawn', playerId: HUMAN, handIndex: targetIdx });
+    if (!r.ok) throw new Error('match failed');
+    const view = computePlayerView(r.state, HUMAN);
+    registerStandardAnchors(view);
+    const plan = planFlights(r.events, view, getAnchorSnapshot(), {
+      batchId: 'batch-mf',
+      version: 9,
+      batchSeq: 9,
+    });
+    const toast = plan.toasts.find((tc) => tc.id.includes('matchfail'));
+    expect(toast).toBeDefined();
+    expect(toast?.delayMs).toBe(tokens.game.duration.flightShakeMs);
+    expect(toast?.message).toContain('penalty');
+  });
+
+  test('power_activated and deck_reshuffled plan announcement toasts', () => {
+    const state = playingGame();
+    const view = computePlayerView(state, HUMAN);
+    registerStandardAnchors(view);
+    const batch: ReadonlyArray<GameEvent> = [
+      { type: 'power_activated', rank: 7, power: 'peek_self', playerId: BOT },
+      { type: 'deck_reshuffled' },
+    ];
+    const plan = planFlights(batch, view, getAnchorSnapshot(), {
+      batchId: 'batch-pw',
+      version: 10,
+      batchSeq: 10,
+    });
+    expect(plan.toasts.some((tc) => tc.id.includes('power'))).toBe(true);
+    expect(plan.toasts.some((tc) => tc.id.includes('reshuffle'))).toBe(true);
+  });
+
+  test('opponent peeked announces; self peeked stays silent', () => {
+    const state = playingGame();
+    const view = computePlayerView(state, HUMAN);
+    registerStandardAnchors(view);
+    const opponentPeek: ReadonlyArray<GameEvent> = [
+      { type: 'peeked', playerId: BOT, targetPlayer: HUMAN, handIndex: 0, cardId: 'c-x' },
+    ];
+    const planOpp = planFlights(opponentPeek, view, getAnchorSnapshot(), {
+      batchId: 'batch-pk1',
+      version: 11,
+      batchSeq: 11,
+    });
+    expect(planOpp.toasts).toHaveLength(1);
+    expect(planOpp.toasts[0]?.message).toContain('your card');
+
+    const selfPeek: ReadonlyArray<GameEvent> = [
+      { type: 'peeked', playerId: HUMAN, targetPlayer: BOT, handIndex: 0, cardId: 'c-y' },
+    ];
+    const planSelf = planFlights(selfPeek, view, getAnchorSnapshot(), {
+      batchId: 'batch-pk2',
+      version: 12,
+      batchSeq: 12,
+    });
+    expect(planSelf.toasts).toHaveLength(0);
+  });
+
+  test('swapped_blind plans a toast after the flight', () => {
+    const state = playingGame();
+    const view = computePlayerView(state, HUMAN);
+    registerStandardAnchors(view);
+    const batch: ReadonlyArray<GameEvent> = [
+      {
+        type: 'swapped_blind',
+        playerId: BOT,
+        selfHandIndex: 0,
+        targetPlayer: HUMAN,
+        targetHandIndex: 1,
+      },
+    ];
+    const plan = planFlights(batch, view, getAnchorSnapshot(), {
+      batchId: 'batch-bs',
+      version: 13,
+      batchSeq: 13,
+    });
+    const toast = plan.toasts.find((tc) => tc.id.includes('blindswap'));
+    expect(toast).toBeDefined();
+    expect(toast?.delayMs).toBe(tokens.game.duration.flightSlow);
+    expect(toast?.message).toContain('with you');
+  });
+
   test('opponent swap_discard stages actor focus, spotlight, readable discard, and delayed toast', () => {
     let state = playingGame();
     const humanDraw = legalMoves(state, HUMAN).find((m) => m.type === 'draw_from_deck');

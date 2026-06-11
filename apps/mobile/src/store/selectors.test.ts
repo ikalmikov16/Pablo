@@ -49,9 +49,6 @@ function makeStoreSnapshot(overrides?: Partial<GameStore>): GameStore {
     displayView: null,
     displayVersion: 0,
     ui: {
-      selection: { kind: 'none' },
-      dragInFlight: false,
-      peekPicks: [],
       endOfRoundVisible: false,
       peekOverlayVisible: false,
       peekJustHappened: false,
@@ -59,6 +56,7 @@ function makeStoreSnapshot(overrides?: Partial<GameStore>): GameStore {
       networkError: false,
       lastPeekReveal: null,
       toast: null,
+      announcement: null,
     },
     animQueue: { pending: [] },
     flightQueue: { activeBatchId: null, flights: [], cues: [] },
@@ -73,15 +71,9 @@ function makeStoreSnapshot(overrides?: Partial<GameStore>): GameStore {
     dequeueEvents: () => {},
     removeFlight: () => {},
     disposeFlightTimers: () => {},
-    setSelection: () => {},
-    clearSelection: () => {},
-    setDragInFlight: () => {},
-    addPeekPick: () => {},
-    clearPeekPicks: () => {},
     showToast: () => {},
+    announce: () => {},
     dismissToast: () => {},
-    setEndOfRoundVisible: () => {},
-    setPeekOverlayVisible: () => {},
     setPeekJustHappened: () => {},
     setLastPeekReveal: () => {},
     setSubmitting: () => {},
@@ -218,9 +210,6 @@ describe('selectPeekOverlayVisible', () => {
     const s = makeStoreSnapshot({
       view,
       ui: {
-        selection: { kind: 'none' },
-        dragInFlight: false,
-        peekPicks: [],
         endOfRoundVisible: false,
         peekOverlayVisible: false,
         peekJustHappened: true,
@@ -228,6 +217,7 @@ describe('selectPeekOverlayVisible', () => {
         networkError: false,
         lastPeekReveal: null,
         toast: null,
+        announcement: null,
       },
     });
     expect(selectPeekOverlayVisible(s)).toBe(true);
@@ -243,9 +233,6 @@ describe('selectLastPeekReveal / selectPowerOverlayVisible', () => {
     const reveal = { target: HUMAN, handIndex: 2 } as const;
     const s = makeStoreSnapshot({
       ui: {
-        selection: { kind: 'none' },
-        dragInFlight: false,
-        peekPicks: [],
         endOfRoundVisible: false,
         peekOverlayVisible: false,
         peekJustHappened: false,
@@ -253,6 +240,7 @@ describe('selectLastPeekReveal / selectPowerOverlayVisible', () => {
         networkError: false,
         lastPeekReveal: reveal,
         toast: null,
+        announcement: null,
       },
     });
     expect(selectLastPeekReveal(s)).toEqual(reveal);
@@ -270,9 +258,6 @@ describe('selectLastPeekReveal / selectPowerOverlayVisible', () => {
     const s = makeStoreSnapshot({
       view,
       ui: {
-        selection: { kind: 'none' },
-        dragInFlight: false,
-        peekPicks: [],
         endOfRoundVisible: false,
         peekOverlayVisible: false,
         peekJustHappened: false,
@@ -280,6 +265,7 @@ describe('selectLastPeekReveal / selectPowerOverlayVisible', () => {
         networkError: false,
         lastPeekReveal: { target: HUMAN, handIndex: 0 },
         toast: null,
+        announcement: null,
       },
     });
     expect(selectPowerOverlayVisible(s)).toBe(true);

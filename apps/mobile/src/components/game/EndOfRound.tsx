@@ -7,11 +7,18 @@
 
 import React, { useEffect } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSequence,
+  withSpring,
+} from 'react-native-reanimated';
 
 import type { Card, PlayerId } from '@pablo/engine';
 import { tokens } from '../../design/tokens';
-import { springFor } from '../../feedback/motion';
+import { END_ROUND_ROW_STAGGER_MS, springFor } from '../../feedback/motion';
 import { t } from '../../i18n';
 import { useGameStore, useGameStoreShallow } from '../../store/provider';
 import { selectPlayers, selectSelf, selectView } from '../../store/selectors';
@@ -29,6 +36,30 @@ type Props = {
   readonly playAgainLabel?: string;
   readonly waitingMessage?: string | null;
 };
+
+/** Winner rows pop once after their staggered entrance so the result lands. */
+function WinnerPop({
+  index,
+  children,
+}: {
+  readonly index: number;
+  readonly children: React.ReactNode;
+}) {
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    scale.value = withDelay(
+      index * END_ROUND_ROW_STAGGER_MS + tokens.game.motion.duration.normal,
+      withSequence(withSpring(1.05, springFor('pulse')), withSpring(1, springFor('settle'))),
+    );
+  }, [index, scale]);
+
+  const popStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return <Animated.View style={popStyle}>{children}</Animated.View>;
+}
 
 export function EndOfRound({
   catalog,
@@ -82,7 +113,7 @@ export function EndOfRound({
         <ScrollView style={styles.scoreList} contentContainerStyle={styles.scoreListContent}>
           {[...players]
             .sort((a, b) => (scores[a.id] ?? 0) - (scores[b.id] ?? 0))
-            .map((p) => {
+            .map((p, rowIndex) => {
               const isWinner = winners.includes(p.id);
               const slots = Array.from({ length: p.handSize }, (_, index) => {
                 const cardId = p.knownCards[index];
@@ -94,8 +125,8 @@ export function EndOfRound({
               const cols = slots.length <= 4 ? 2 : slots.length <= 6 ? 3 : 4;
               const gridWidth = cols * CARD_W + (cols - 1) * tokens.game.table.handGap;
 
-              return (
-                <View key={p.id} style={[styles.scoreRow, isWinner && styles.winnerRow]}>
+              const row = (
+                <View style={[styles.scoreRow, isWinner && styles.winnerRow]}>
                   <Text style={[styles.scoreName, isWinner && styles.winnerText]}>
                     {p.id === self ? t('game.you') : displayName(p.id)}
                   </Text>
@@ -114,6 +145,15 @@ export function EndOfRound({
                     {t('result.score', { score: scores[p.id] ?? 0 })}
                   </Text>
                 </View>
+              );
+
+              return (
+                <Animated.View
+                  key={p.id}
+                  entering={FadeInDown.delay(rowIndex * END_ROUND_ROW_STAGGER_MS).springify()}
+                >
+                  {isWinner ? <WinnerPop index={rowIndex}>{row}</WinnerPop> : row}
+                </Animated.View>
               );
             })}
         </ScrollView>

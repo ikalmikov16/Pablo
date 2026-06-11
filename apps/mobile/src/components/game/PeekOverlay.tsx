@@ -28,16 +28,18 @@ import { defaultCardTheme } from '../../design/cardTheme';
 import { tokens } from '../../design/tokens';
 import { springFor } from '../../feedback/motion';
 import { t } from '../../i18n';
+import { resolveDisplayName } from '../../store/displayName';
 import { useGameStore, useGameStoreShallow } from '../../store/provider';
 import {
   selectMyHandSlots,
   selectPeekRequired,
   selectPlayers,
   selectSelf,
+  selectView,
 } from '../../store/selectors';
 import { PlayingCard } from '../cards/PlayingCard';
 
-const CARD_W = 80;
+const CARD_W = tokens.game.size.peekCard;
 const CARD_H = Math.floor(CARD_W * 1.46);
 const FACE_DOWN_CARD: Card = { suit: 'spades', rank: 1 };
 
@@ -72,6 +74,7 @@ export function PeekOverlay({ catalog, onPeekOne, onDismiss }: Props) {
   const peekRequired = useGameStore(selectPeekRequired);
   const players = useGameStoreShallow(selectPlayers);
   const self = useGameStore(selectSelf);
+  const view = useGameStore(selectView);
 
   // The "real" peek count is what the engine has acknowledged: i.e. how many
   // of the local player's slots have a known cardId. We don't double-count
@@ -80,9 +83,11 @@ export function PeekOverlay({ catalog, onPeekOne, onDismiss }: Props) {
   const peekedCount = useMemo(() => slots.filter((slot) => slot.cardId !== null).length, [slots]);
   const canDismiss = peekedCount >= peekRequired;
 
-  const botsRemaining = players.filter(
-    (p) => p.id !== self && Object.keys(p.knownCards).length < peekRequired,
-  ).length;
+  // `hasPeeked` is the engine's public completion flag — unlike the viewer's
+  // `knownCards` (which only tracks what *we* know about a player), it stays
+  // correct for human opponents online.
+  const opponents = players.filter((p) => p.id !== self);
+  const anyOpponentPeeking = opponents.some((p) => !p.hasPeeked);
 
   const handleTap = useCallback(
     (slotIndex: number, alreadyKnown: boolean) => {
@@ -143,12 +148,23 @@ export function PeekOverlay({ catalog, onPeekOne, onDismiss }: Props) {
           ))}
         </View>
 
-        {botsRemaining > 0 && (
-          <Text style={styles.waiting}>
-            {botsRemaining === 1
-              ? t('game.peek.waitingForBots', { remaining: botsRemaining })
-              : t('game.peek.waitingForBotsPlural', { remaining: botsRemaining })}
-          </Text>
+        {anyOpponentPeeking && view && (
+          <View style={styles.readiness}>
+            {opponents.map((p) => {
+              const name = resolveDisplayName(view, p.id);
+              return (
+                <Text
+                  key={p.id}
+                  style={[styles.waiting, p.hasPeeked && styles.ready]}
+                  numberOfLines={1}
+                >
+                  {p.hasPeeked
+                    ? t('game.peek.opponentReady', { name })
+                    : t('game.peek.opponentPeeking', { name })}
+                </Text>
+              );
+            })}
+          </View>
         )}
 
         <TouchableOpacity
@@ -200,10 +216,18 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
     overflow: 'hidden',
   },
+  readiness: {
+    gap: tokens.space.xs,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
   waiting: {
     fontSize: tokens.font.size.sm,
     color: tokens.color.text.secondary,
     textAlign: 'center',
+  },
+  ready: {
+    color: tokens.color.accent.primary,
   },
   confirmBtn: {
     backgroundColor: tokens.color.accent.primary,
