@@ -4,7 +4,7 @@ Living plan. Agents MUST update this after meaningful changes — move items bet
 
 ## Current phase
 
-**Phase 7 part 1 — UX polish + bug sweep** (`phase-7-ux-polish`) is in progress (see `docs/plans/phase-7-ux-polish.md`): every opponent move now has text + motion treatment (announcement banner, new planner toasts/cues), peek-privacy redaction fix, `hasPeeked` projection flag, turn-indicator pill + active-seat pulse, end-of-round choreography, dead-code sweep. Sounds / icon / EAS stay in part 2. **Phase 6 — Multiplayer wiring** (`phase-6-multiplayer`) squash-merged to `main` (2026-06-10): `realClient`, lobby UI, `getActiveSession` reconnection, `rooms.current_game_id`, `returnToLobby`, realtime publication for lobby subscriptions, tick-pump initial-sync snap. Manual two-device pass validated (simulator + physical iPhone via Expo Go).
+**Phase 7 part 2 — Launch prep** (sounds, zellige theme, app icon, splash, EAS/TestFlight) is next. **Phase 7 part 1 — UX polish + bug sweep** (`phase-7-ux-polish`) squash-merged to `main` (2026-06-11): every opponent move has text + motion treatment (announcement banner, planner toasts/cues), peek-privacy redaction fix, `hasPeeked` projection flag, turn-indicator pill + active-seat pulse, end-of-round choreography, dead-code sweep. See `docs/plans/phase-7-ux-polish.md`.
 
 ---
 
@@ -92,13 +92,15 @@ Read `AGENTS.md` § "Branch / PR workflow" before starting any phase. TL;DR:
   - `getActiveSession` cold-launch reconnection; `returnToLobby` edge function; `rooms.current_game_id` migration; realtime publication on `rooms` + `room_members`.
   - Online move latency masking (`submitting` lock, `NetworkBanner`); non-host follow-the-host after round end.
   - Integration tests in `tests/integration/multiplayer.test.ts`; plan at `docs/plans/phase-6-multiplayer.md`; `bun run check` clean.
+- ✅ **Phase 7 part 1 — UX polish + bug sweep** (`phase-7-ux-polish` squash-merged to `main`, 2026-06-11).
+  - Bug sweep: `peek_one_chosen` redaction (B1), `hasPeeked` projection (B2), 6-char mock room codes (B3), per-game bot-timer cleanup (B4), `game.status.loading` (B5), bot names through i18n (B6), doc drift (B7), tokenised stray colors (B8), dead store/selector code removed (B9).
+  - Announcements layer: `AnnouncementBanner`; planner announcements for `match_failed`, `power_activated`, `peeked`, `swapped_blind`, `deck_reshuffled`; choreography cues (peek spotlight, power actor-focus, reshuffle pulse).
+  - Visual polish: `TurnLabel` pill + turn-start haptic, active-seat pulse, action-bar my-turn accent, end-of-round stagger + winner pop, peek per-opponent readiness, lobby avatar rows.
+  - Plan at `docs/plans/phase-7-ux-polish.md`; `bun run check` clean.
 
 ## In progress
 
-- 🔄 **Phase 7 part 1 — UX polish + bug sweep** (`phase-7-ux-polish`, branch pushed, awaiting merge):
-  - Bug sweep: `peek_one_chosen` redaction leak (B1), `hasPeeked` peek-progress flag (B2), 6-char mock room codes (B3), per-game bot-timer cleanup (B4), `game.status.loading` key (B5), bot names through i18n (B6), doc drift (B7), tokenised stray colors (B8), dead store/selector code removed (B9).
-  - Announcements layer: persistent `AnnouncementBanner` under the top bar; planner toasts → announcements for `match_failed` (with reason), `power_activated`, `peeked`, `swapped_blind`, `deck_reshuffled`; new choreography cues (peek-target spotlight, power actor-focus, reshuffle pulse).
-  - Visual polish: animated `TurnLabel` pill with my-turn pulse + haptic, breathing active-seat tint, action-bar my-turn accent, end-of-round staggered rows + winner pop, peek overlay per-opponent readiness, lobby avatar rows.
+(none — Phase 7 part 2 is next)
 
 ---
 
