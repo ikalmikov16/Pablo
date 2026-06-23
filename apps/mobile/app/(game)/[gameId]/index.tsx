@@ -18,7 +18,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import type { GameMode } from '../../../src/supabase/gameMode';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Move } from '@pablo/engine';
 import { ActionBar } from '../../../src/components/game/ActionBar';
@@ -34,19 +34,27 @@ import { NetworkBanner } from '../../../src/components/game/NetworkBanner';
 import { OwnHandGrid } from '../../../src/components/game/OwnHandGrid';
 import { PabloBanner } from '../../../src/components/game/PabloBanner';
 import { TableDimOverlay } from '../../../src/components/game/internal/TableDimOverlay';
+import { TableBackground } from '../../../src/components/game/TableBackground';
 import { TableLayout } from '../../../src/components/game/TableLayout';
 import { PeekOverlay } from '../../../src/components/game/PeekOverlay';
 import { ToastHost } from '../../../src/components/game/ToastHost';
 import { TurnLabel } from '../../../src/components/game/TurnLabel';
 import { tokens } from '../../../src/design/tokens';
+import { textStyle } from '../../../src/design/typography';
 import {
   hapticForMove,
   hapticForMoveError,
   hapticForTurnStart,
 } from '../../../src/feedback/haptics';
 import { t } from '../../../src/i18n';
+import { navigateHome } from '../../../src/navigation/navigateHome';
 import { isBotId } from '../../../src/supabase/internal/room';
-import { botDisplayName, resolveDisplayName } from '../../../src/store/displayName';
+import {
+  botDisplayName,
+  clearDisplayNames,
+  resolveDisplayName,
+  setDisplayNames,
+} from '../../../src/store/displayName';
 import { useGameStore, useGameStoreShallow } from '../../../src/store/provider';
 import {
   selectCanDraw,
@@ -97,6 +105,7 @@ export default function GameScreen() {
   const setLastPeekReveal = useGameStore((s) => s.setLastPeekReveal);
   const setSubmitting = useGameStore((s) => s.setSubmitting);
   const setNetworkError = useGameStore((s) => s.setNetworkError);
+  const insets = useSafeAreaInsets();
 
   const [activeFlow, setActiveFlow] = useState<ActiveFlow>(null);
   const [isHost, setIsHost] = useState(false);
@@ -115,6 +124,20 @@ export default function GameScreen() {
     });
     return unsub;
   }, [client, isOnline, roomId, gameId, view?.self]);
+
+  // Resolve human player names so opponent seats and toasts show real names
+  // (bots keep their i18n names; self stays "You"). Cleared on unmount so names
+  // never leak between games.
+  const playerIdsKey = view?.players.map((p) => p.id).join(',') ?? '';
+  useEffect(() => {
+    if (!isOnline || !playerIdsKey) return;
+    const unsub = client.subscribeDisplayNames(playerIdsKey.split(','), (next) => {
+      setDisplayNames(next);
+    });
+    return unsub;
+  }, [client, isOnline, playerIdsKey]);
+
+  useEffect(() => () => clearDisplayNames(), []);
 
   // Nudge the player when the turn comes back around to them.
   useEffect(() => {
@@ -155,7 +178,7 @@ export default function GameScreen() {
     if (isOnline && roomId) {
       await client.leaveRoom({ roomId: roomId as RoomId });
     }
-    router.replace('/(home)');
+    navigateHome();
   }
 
   async function handlePlayAgain() {
@@ -197,20 +220,23 @@ export default function GameScreen() {
   return (
     <View style={styles.screen}>
       <FlyingCardLayer catalog={catalog} />
-      <SafeAreaView style={styles.root}>
-        <NetworkBanner />
+      <SafeAreaView style={styles.root} edges={['left', 'right']}>
+        <View style={[styles.topChrome, { paddingTop: insets.top }]}>
+          <NetworkBanner />
 
-        {/* Top bar */}
-        <View style={styles.topBar}>
-          <TurnLabel label={view ? turnLabel : t('game.status.loading')} isMyTurn={isMyTurn} />
-          <TouchableOpacity onPress={() => void handleLeave()} activeOpacity={0.7}>
-            <Text style={styles.leaveText}>{t('game.leave')}</Text>
-          </TouchableOpacity>
+          {/* Top bar */}
+          <View style={styles.topBar}>
+            <TurnLabel label={view ? turnLabel : t('game.status.loading')} isMyTurn={isMyTurn} />
+            <TouchableOpacity onPress={() => void handleLeave()} activeOpacity={0.7}>
+              <Text style={styles.leaveText}>{t('game.leave')}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <AnnouncementBanner />
 
         <View style={styles.tableArea}>
+          <TableBackground />
           <TableDimOverlay active={tableDimmed} />
           <TableLayout
             opponents={opponents}
@@ -348,6 +374,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.game.surface.table,
   },
+  topChrome: {
+    backgroundColor: tokens.color.surface.card,
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -359,7 +388,7 @@ const styles = StyleSheet.create({
     borderBottomColor: tokens.color.border.subtle,
   },
   leaveText: {
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm'),
     color: tokens.color.text.secondary,
     paddingHorizontal: tokens.space.sm,
     paddingVertical: tokens.space.xs,

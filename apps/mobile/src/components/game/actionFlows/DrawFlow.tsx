@@ -27,6 +27,7 @@ import type { Card } from '@pablo/engine';
 import { defaultCardTheme } from '../../../design/cardTheme';
 import { PlayingCard } from '../../cards/PlayingCard';
 import { tokens } from '../../../design/tokens';
+import { textStyle } from '../../../design/typography';
 import { DRAW_FLOW_SHEET_OFFSCREEN, springFor } from '../../../feedback/motion';
 import { t } from '../../../i18n';
 import { useGameStore, useGameStoreShallow } from '../../../store/provider';
@@ -225,6 +226,7 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: tokens.space.md,
     alignItems: 'center',
+    ...tokens.shadow.floating,
   },
   cardHero: {
     alignItems: 'center',
@@ -232,11 +234,10 @@ const styles = StyleSheet.create({
     marginBottom: tokens.space.xs,
   },
   cardLabel: {
-    fontSize: tokens.font.size.xs,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('xs', 'semibold'),
     color: tokens.color.text.secondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: tokens.font.letterSpacing.wide,
   },
   cardFrame: {
     borderRadius: tokens.radius.lg,
@@ -251,7 +252,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   hint: {
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm'),
     color: tokens.color.text.secondary,
     textAlign: 'center',
   },
@@ -271,9 +272,8 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.color.accent.primary,
   },
   actionText: {
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm', 'semibold'),
     color: tokens.color.text.primary,
-    fontWeight: tokens.font.weight.semibold,
   },
   matchText: {
     color: tokens.color.text.inverse,
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelText: {
+    ...textStyle('sm'),
     color: tokens.color.text.secondary,
-    fontSize: tokens.font.size.sm,
   },
 });

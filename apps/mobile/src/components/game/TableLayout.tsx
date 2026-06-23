@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   },
   deckCenter: {
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   selfCenter: {
     alignItems: 'center',

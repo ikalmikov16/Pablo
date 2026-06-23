@@ -58,9 +58,27 @@ export type ClientResult<T> =
 
 export type Unsubscribe = () => void;
 
+/** Map of player id → chosen display name (null when the player has not set one). */
+export type DisplayNameMap = Readonly<Record<PlayerId, string | null>>;
+
 export interface PabloClient {
   /** Anonymous or social sign-in. Resolves with the local player's id. */
   signIn(): Promise<ClientResult<PlayerId>>;
+
+  /** Set the local player's display name (persisted to their profile). */
+  setDisplayName(name: string): Promise<ClientResult<void>>;
+
+  /** Fetch the chosen display names for a set of player ids. */
+  getDisplayNames(ids: ReadonlyArray<PlayerId>): Promise<ClientResult<DisplayNameMap>>;
+
+  /**
+   * Subscribe to display-name changes for a set of player ids. Fires once with
+   * the current names, then again whenever any of them edits their name.
+   */
+  subscribeDisplayNames(
+    ids: ReadonlyArray<PlayerId>,
+    onChange: (names: DisplayNameMap) => void,
+  ): Unsubscribe;
 
   /** Create a new room and join it as host. */
   createRoom(opts: {

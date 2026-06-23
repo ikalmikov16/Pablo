@@ -19,6 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { tokens } from '../../design/tokens';
+import { textStyle } from '../../design/typography';
 import { springFor, timingFor } from '../../feedback/motion';
 
 const ENTER_SLIDE_Y = 6;
@@ -65,7 +66,12 @@ export function TurnLabel({ label, isMyTurn }: Props) {
   return (
     <View style={styles.row}>
       <Animated.View
-        style={[styles.pill, isMyTurn ? styles.pillActive : styles.pillIdle, animStyle]}
+        style={[
+          styles.pill,
+          isMyTurn ? styles.pillActive : styles.pillIdle,
+          isMyTurn && styles.pillActiveShadow,
+          animStyle,
+        ]}
       >
         <Text
           style={[styles.text, isMyTurn ? styles.textActive : styles.textIdle]}
@@ -93,12 +99,16 @@ const styles = StyleSheet.create({
   pillActive: {
     backgroundColor: tokens.color.accent.primary,
   },
+  pillActiveShadow: {
+    ...tokens.shadow.raised,
+  },
   pillIdle: {
-    backgroundColor: tokens.game.surface.slotEmpty,
+    // slotEmpty is a felt-side tint (light-on-teal) and vanishes on the white
+    // top bar; the sand border tone doubles as a quiet chrome-side pill bg.
+    backgroundColor: tokens.color.border.subtle,
   },
   text: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('sm', 'semibold'),
   },
   textActive: {
     color: tokens.color.text.inverse,

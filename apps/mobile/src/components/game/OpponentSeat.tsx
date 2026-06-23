@@ -1,11 +1,11 @@
 /**
- * OpponentSeat — name (above) and a compact face-down 2×2 hand grid.
+ * OpponentSeat — seat plate (avatar + name + status) and a compact face-down 2×2 hand grid.
  *
  * Never reads `knownCards` for rendering — peeks are shown only in overlays.
  */
 
 import React, { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   interpolateColor,
@@ -19,13 +19,17 @@ import Animated, {
 
 import type { PlayerViewEntry } from '@pablo/engine';
 import { radiusFor } from '../cards/internal/cardSizes';
+import { Avatar } from '../ui/Avatar';
 import { tokens } from '../../design/tokens';
+import { textStyle } from '../../design/typography';
 import { timingFor } from '../../feedback/motion';
+import { t } from '../../i18n';
 import { useGameStore } from '../../store/provider';
 import {
   selectActorFocusPlayerIds,
   selectDestinationAnchorKeys,
   selectMatchFailedShakeSlots,
+  selectPabloCalledBy,
   selectSourceAnchorKeys,
   selectSpotlightAnchorKeys,
 } from '../../store/selectors';
@@ -126,6 +130,7 @@ function OpponentSlotWrapper({
 export function OpponentSeat({ entry, displayName, cardWidth, isCurrent }: Props) {
   const destKeys = useGameStore(selectDestinationAnchorKeys);
   const sourceKeys = useGameStore(selectSourceAnchorKeys);
+  const pabloCalledBy = useGameStore(selectPabloCalledBy);
   const gridLayoutTransition = LinearTransition.springify().damping(20).stiffness(180);
   const shakeSlots = useGameStore((s) => selectMatchFailedShakeSlots(s, entry.id));
   const actorFocused = useGameStore((s) => selectActorFocusPlayerIds(s).has(entry.id));
@@ -134,8 +139,8 @@ export function OpponentSeat({ entry, displayName, cardWidth, isCurrent }: Props
   const focusIntensity = useSharedValue(0);
   useActorFocusIntensity(actorFocused, focusIntensity);
 
-  // Breathing tint while it's this opponent's turn — makes the active seat
-  // readable at a glance without being distracting.
+  const calledPablo = pabloCalledBy === entry.id;
+
   const turnPulse = useSharedValue(0);
   useEffect(() => {
     if (isCurrent) {
@@ -215,9 +220,17 @@ export function OpponentSeat({ entry, displayName, cardWidth, isCurrent }: Props
         pointerEvents="none"
       />
       <Animated.View style={[styles.seatBody, actorFocused && styles.actorFocusPad, seatAnimStyle]}>
-        <Animated.Text style={[styles.name, nameAnimStyle]} numberOfLines={1}>
-          {displayName}
-        </Animated.Text>
+        <View style={styles.plate}>
+          <Avatar name={displayName} seedId={entry.id} size={24} />
+          <Animated.Text style={[styles.name, nameAnimStyle]} numberOfLines={1}>
+            {displayName}
+          </Animated.Text>
+          {calledPablo ? (
+            <Text style={styles.pabloStatus}>{t('game.seat.pablo')}</Text>
+          ) : (
+            <Text style={styles.status}>{t('game.seat.cards', { count: entry.handSize })}</Text>
+          )}
+        </View>
         <Animated.View layout={gridLayoutTransition}>
           <CardSlotGrid
             slots={slots}
@@ -253,14 +266,34 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   current: {
-    // backgroundColor is driven by the animated turn pulse.
     borderRadius: tokens.radius.md,
     padding: tokens.space.xs,
   },
-  name: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+  plate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.space.xs,
+    height: tokens.game.table.seatHeaderHeight,
+    paddingHorizontal: tokens.space.sm,
+    paddingVertical: tokens.space.xs,
+    backgroundColor: tokens.game.surface.seatPlate,
+    borderRadius: tokens.radius.pill,
     maxWidth: '100%',
+    ...tokens.shadow.raised,
+  },
+  name: {
+    ...textStyle('sm', 'semibold'),
+    flexShrink: 1,
+  },
+  status: {
+    ...textStyle('xs'),
+    color: tokens.color.text.secondary,
+    flexShrink: 0,
+  },
+  pabloStatus: {
+    ...textStyle('xs', 'semibold'),
+    color: tokens.color.accent.primary,
+    flexShrink: 0,
   },
   slotWrapper: {},
 });

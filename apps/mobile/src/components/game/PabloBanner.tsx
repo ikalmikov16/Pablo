@@ -6,9 +6,11 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BANNER_OFFSCREEN_Y, springFor } from '../../feedback/motion';
 import { tokens } from '../../design/tokens';
+import { textStyle } from '../../design/typography';
 import { t } from '../../i18n';
 import { resolveDisplayName } from '../../store/displayName';
 import { useGameStore } from '../../store/provider';
@@ -18,12 +20,15 @@ export function PabloBanner() {
   const view = useGameStore(selectView);
   const pabloCalledBy = useGameStore(selectPabloCalledBy);
   const currentPlayer = useGameStore(selectCurrentPlayerId);
+  const insets = useSafeAreaInsets();
 
-  const translateY = useSharedValue(BANNER_OFFSCREEN_Y);
+  // The banner now fills the top inset, so it must travel further to hide.
+  const hiddenY = BANNER_OFFSCREEN_Y - insets.top;
+  const translateY = useSharedValue(hiddenY);
 
   useEffect(() => {
-    translateY.value = withSpring(pabloCalledBy ? 0 : BANNER_OFFSCREEN_Y, springFor('banner'));
-  }, [pabloCalledBy, translateY]);
+    translateY.value = withSpring(pabloCalledBy ? 0 : hiddenY, springFor('banner'));
+  }, [pabloCalledBy, hiddenY, translateY]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
@@ -38,7 +43,7 @@ export function PabloBanner() {
     : t('game.pablo.sublineOffTurn', { name: callerName });
 
   return (
-    <Animated.View style={[styles.banner, animStyle]}>
+    <Animated.View style={[styles.banner, { paddingTop: insets.top + tokens.space.sm }, animStyle]}>
       <Text style={styles.title}>{t('game.pablo.banner', { name: callerName })}</Text>
       <Text style={styles.sub}>{subline}</Text>
     </Animated.View>
@@ -59,12 +64,10 @@ const styles = StyleSheet.create({
   },
   title: {
     color: tokens.color.text.inverse,
-    fontWeight: tokens.font.weight.semibold,
-    fontSize: tokens.font.size.md,
+    ...textStyle('md', 'semibold'),
   },
   sub: {
     color: tokens.game.accent.pabloSubText,
-    fontSize: tokens.font.size.xs,
-    marginTop: 2,
+    ...textStyle('xs'),
   },
 });

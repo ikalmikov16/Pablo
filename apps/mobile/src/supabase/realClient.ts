@@ -9,6 +9,7 @@ import { getSupabaseBrowser } from './internal/supabaseBrowser';
 import type {
   ActiveSession,
   ClientResult,
+  DisplayNameMap,
   GameId,
   PabloClient,
   Room,
@@ -115,6 +116,76 @@ export function createRealClient(opts: RealClientOptions = {}): PabloClient {
     const { data, error } = await supabase.auth.signInAnonymously();
     if (error || !data.user) return fail('unauthenticated');
     return ok(data.user.id);
+  }
+
+  async function setDisplayName(name: string): Promise<ClientResult<void>> {
+    const auth = await signIn();
+    if (!auth.ok) return auth;
+
+    const trimmed = name.trim();
+    const { error } = await supabase
+      .from('profiles')
+      .update({ display_name: trimmed.length > 0 ? trimmed : null })
+      .eq('id', auth.data);
+
+    if (error) return fail('internal_error');
+    return ok(undefined);
+  }
+
+  async function fetchDisplayNames(ids: ReadonlyArray<PlayerId>): Promise<DisplayNameMap> {
+    if (ids.length === 0) return {};
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, display_name')
+      .in('id', ids as string[]);
+
+    if (error || !data) return {};
+    const map: Record<string, string | null> = {};
+    for (const row of data as ReadonlyArray<{ id: string; display_name: string | null }>) {
+      map[row.id] = row.display_name;
+    }
+    return map;
+  }
+
+  async function getDisplayNames(
+    ids: ReadonlyArray<PlayerId>,
+  ): Promise<ClientResult<DisplayNameMap>> {
+    return ok(await fetchDisplayNames(ids));
+  }
+
+  function subscribeDisplayNames(
+    ids: ReadonlyArray<PlayerId>,
+    onChange: (names: DisplayNameMap) => void,
+  ): Unsubscribe {
+    if (ids.length === 0) {
+      onChange({});
+      return () => {};
+    }
+
+    let active = true;
+    const refetch = () => {
+      void fetchDisplayNames(ids).then((names) => {
+        if (active) onChange(names);
+      });
+    };
+    refetch();
+
+    const filterIds = [...ids].join(',');
+    const channel = supabase
+      .channel(`profiles:${filterIds}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles', filter: `id=in.(${filterIds})` },
+        () => {
+          refetch();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
   }
 
   async function createRoom(opts: {
@@ -289,6 +360,9 @@ export function createRealClient(opts: RealClientOptions = {}): PabloClient {
 
   return {
     signIn,
+    setDisplayName,
+    getDisplayNames,
+    subscribeDisplayNames,
     createRoom,
     joinRoom,
     leaveRoom,

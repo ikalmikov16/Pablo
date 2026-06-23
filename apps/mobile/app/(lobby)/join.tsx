@@ -1,27 +1,52 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
+import { useEffect, useState } from 'react';
+import { StyleSheet, Text, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '../../src/components/ui/Button';
 import { tokens } from '../../src/design/tokens';
+import { textStyle } from '../../src/design/typography';
 import { t } from '../../src/i18n';
+import { loadCachedName, saveCachedName } from '../../src/store/nameCache';
 import { usePabloClient } from '../../src/supabase/ClientProvider';
 import type { ClientErrorCode } from '../../src/supabase/types';
 
+const NAME_MAX_LENGTH = 20;
+
 export default function JoinRoomScreen() {
   const client = usePabloClient();
+  const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ClientErrorCode | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    void loadCachedName().then((cached) => {
+      if (active && cached) setName(cached);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   async function handleJoin() {
-    const trimmed = code.trim().toUpperCase();
-    if (!trimmed) return;
+    const trimmedCode = code.trim().toUpperCase();
+    if (!trimmedCode) return;
     setLoading(true);
     setError(null);
     try {
-      await client.signIn();
-      const result = await client.joinRoom({ code: trimmed });
+      const auth = await client.signIn();
+      if (!auth.ok) {
+        setError(auth.error);
+        return;
+      }
+      const trimmedName = name.trim();
+      if (trimmedName) {
+        await client.setDisplayName(trimmedName);
+        await saveCachedName(trimmedName);
+      }
+      const result = await client.joinRoom({ code: trimmedCode });
       if (!result.ok) {
         setError(result.error);
         return;
@@ -37,8 +62,21 @@ export default function JoinRoomScreen() {
       <Text style={styles.title}>{t('lobby.join.title')}</Text>
       <Text style={styles.subtitle}>{t('lobby.join.subtitle')}</Text>
 
+      <Text style={styles.label}>{t('lobby.name.label')}</Text>
       <TextInput
-        style={styles.input}
+        style={styles.nameInput}
+        value={name}
+        onChangeText={setName}
+        placeholder={t('lobby.name.placeholder')}
+        placeholderTextColor={tokens.color.text.secondary}
+        autoCapitalize="words"
+        autoCorrect={false}
+        maxLength={NAME_MAX_LENGTH}
+        returnKeyType="next"
+      />
+
+      <TextInput
+        style={styles.codeInput}
         value={code}
         onChangeText={(v) => setCode(v.toUpperCase())}
         placeholder={t('lobby.join.placeholder')}
@@ -50,18 +88,13 @@ export default function JoinRoomScreen() {
 
       {error && <Text style={styles.error}>{t(`error.${error}`)}</Text>}
 
-      {loading ? (
-        <ActivityIndicator color={tokens.color.accent.primary} size="large" />
-      ) : (
-        <TouchableOpacity
-          style={[styles.primaryBtn, !code.trim() && styles.primaryBtnDisabled]}
-          onPress={() => void handleJoin()}
-          disabled={!code.trim()}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.primaryBtnText}>{t('lobby.join.confirm')}</Text>
-        </TouchableOpacity>
-      )}
+      <Button
+        label={t('lobby.join.confirm')}
+        onPress={() => void handleJoin()}
+        disabled={!code.trim()}
+        loading={loading}
+        style={styles.confirm}
+      />
     </SafeAreaView>
   );
 }
@@ -75,46 +108,47 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   title: {
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('lg', 'semibold'),
     color: tokens.color.text.primary,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm'),
     color: tokens.color.text.secondary,
     textAlign: 'center',
   },
-  input: {
+  label: {
+    ...textStyle('sm', 'semibold'),
+    color: tokens.color.text.secondary,
+    marginTop: tokens.space.lg,
+  },
+  nameInput: {
+    ...textStyle('md'),
     borderWidth: 1,
     borderColor: tokens.color.border.subtle,
     borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.lg,
     paddingVertical: tokens.space.md,
-    fontSize: tokens.font.size.xl,
+    color: tokens.color.text.primary,
+  },
+  codeInput: {
+    ...textStyle('xl'),
+    borderWidth: 1,
+    borderColor: tokens.color.border.subtle,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: tokens.space.md,
     letterSpacing: 4,
     textAlign: 'center',
     color: tokens.color.text.primary,
-    marginTop: tokens.space.lg,
+    marginTop: tokens.space.sm,
   },
-  primaryBtn: {
+  confirm: {
     marginTop: tokens.space.xl,
-    backgroundColor: tokens.color.accent.primary,
-    borderRadius: tokens.radius.md,
-    paddingVertical: tokens.space.md,
-    alignItems: 'center',
-  },
-  primaryBtnDisabled: {
-    opacity: 0.5,
-  },
-  primaryBtnText: {
-    color: tokens.color.text.inverse,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
   },
   error: {
+    ...textStyle('sm'),
     color: tokens.game.accent.pabloOnTurn,
     textAlign: 'center',
-    fontSize: tokens.font.size.sm,
   },
 });

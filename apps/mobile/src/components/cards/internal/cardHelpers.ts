@@ -1,12 +1,11 @@
 /**
  * Pure helper functions for card display.
  * No React, no Skia, no Reanimated — just data transforms.
- * Tested directly in PlayingCard.test.ts.
  */
 import type { Rank, Suit } from '@pablo/engine';
 import type { CardTheme } from '../../../design/cardTheme';
 
-/** Unicode suit glyph for a given suit. */
+/** Unicode suit glyph for text labels (toasts, banners). Card art uses Skia paths. */
 export function suitGlyph(suit: Suit): string {
   switch (suit) {
     case 'hearts':

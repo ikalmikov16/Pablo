@@ -15,6 +15,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { tokens } from '../../design/tokens';
+import { textStyle } from '../../design/typography';
 import { springFor, timingFor, TOAST_SLIDE_Y } from '../../feedback/motion';
 import { t } from '../../i18n';
 import { useGameStore } from '../../store/provider';
@@ -65,11 +66,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.lg,
     paddingVertical: tokens.space.sm,
     maxWidth: tokens.game.size.toastMaxWidth,
+    ...tokens.shadow.floating,
     zIndex: 50,
   },
   text: {
     color: tokens.color.text.inverse,
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm'),
     textAlign: 'center',
   },
 });

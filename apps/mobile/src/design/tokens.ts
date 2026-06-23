@@ -10,29 +10,35 @@
 export const tokens = {
   color: {
     surface: {
-      app: '#FAFAF7',
-      card: '#FFFFFF',
-      overlay: 'rgba(0,0,0,0.45)',
+      app: '#F6F0E4',
+      card: '#FFFDF7',
+      overlay: 'rgba(9,40,36,0.5)',
     },
     text: {
-      primary: '#1A1A1A',
-      secondary: '#666666',
-      inverse: '#FFFFFF',
+      primary: '#221C14',
+      secondary: '#6E6354',
+      inverse: '#FFFDF7',
     },
     accent: {
-      primary: '#2D6A4F',
-      primaryPressed: '#1B4332',
+      primary: '#C2552F',
+      primaryPressed: '#9C3F20',
+      highlight: '#C9A227',
     },
     border: {
-      subtle: '#E5E5E0',
-      strong: '#9C9C95',
+      subtle: '#E7DEC9',
+      strong: '#A89A7E',
     },
   },
   space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const,
   radius: { sm: 6, md: 10, lg: 16, xl: 20, pill: 999 } as const,
   font: {
-    size: { xs: 12, sm: 14, md: 16, lg: 20, xl: 28 } as const,
-    weight: { regular: '400' as const, semibold: '600' as const },
+    size: { xs: 12, sm: 14, md: 16, lg: 20, xl: 28, display: 40 } as const,
+    family: {
+      regular: 'Outfit_400Regular',
+      semibold: 'Outfit_600SemiBold',
+      bold: 'Outfit_700Bold',
+    },
+    letterSpacing: { tight: -0.3, normal: 0, wide: 0.6 } as const,
   },
   shadow: {
     card: {
@@ -42,27 +48,56 @@ export const tokens = {
       shadowRadius: 8,
       elevation: 4,
     },
+    raised: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    floating: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.18,
+      shadowRadius: 16,
+      elevation: 8,
+    },
   },
   /** Game-specific surfaces, accents, and timing. */
   game: {
     surface: {
-      table: '#F1ECDD',
-      actionBar: '#FFFFFF',
-      actionBarBorder: '#E5E5E0',
-      slotEmpty: 'rgba(0,0,0,0.04)',
-      slotGhostBorder: 'rgba(45,106,79,0.4)',
-      slotSelected: 'rgba(45,106,79,0.18)',
-      currentTurnTint: 'rgba(45,106,79,0.06)',
+      table: '#0E4F47',
+      actionBar: '#FFFDF7',
+      actionBarBorder: '#E7DEC9',
+      slotEmpty: 'rgba(255,253,247,0.08)',
+      slotGhostBorder: 'rgba(201,162,39,0.55)',
+      slotSelected: 'rgba(201,162,39,0.22)',
+      currentTurnTint: 'rgba(201,162,39,0.10)',
       /** Peak of the active-seat breathing pulse. */
-      currentTurnTintStrong: 'rgba(45,106,79,0.16)',
-      winnerRowTint: 'rgba(45,106,79,0.08)',
-      deckBadgeBg: 'rgba(0,0,0,0.55)',
-      toastBg: 'rgba(30,30,30,0.88)',
-      announcementBg: 'rgba(255,255,255,0.85)',
+      currentTurnTintStrong: 'rgba(201,162,39,0.26)',
+      winnerRowTint: 'rgba(201,162,39,0.12)',
+      deckBadgeBg: 'rgba(9,40,36,0.72)',
+      toastBg: 'rgba(20,16,10,0.9)',
+      announcementBg: 'rgba(255,253,247,0.92)',
+      /** Dashed empty-discard border on felt. */
+      feltOutline: 'rgba(255,253,247,0.25)',
+      /** Felt gradient outer stop + edge vignette. */
+      tableEdge: '#093832',
+      /** Opponent seat plate background. */
+      seatPlate: 'rgba(255,253,247,0.92)',
+      /** Network reconnect banner — decoupled from Pablo alarm red. */
+      networkBg: 'rgba(20,16,10,0.92)',
+    },
+    avatar: {
+      palette: ['#14554B', '#C2552F', '#C9A227', '#6B6B2E', '#243B36'] as const,
+    },
+    text: {
+      onFelt: '#F2E9D5',
+      onFeltMuted: 'rgba(242,233,213,0.65)',
     },
     accent: {
-      pabloOnTurn: '#B23A48',
-      pabloOffTurn: '#D88C9A',
+      pabloOnTurn: '#A93226',
+      pabloOffTurn: '#D98E79',
       pabloSubText: 'rgba(255,255,255,0.8)',
     },
     motion: {
@@ -153,6 +188,10 @@ export const tokens = {
       /** Toast bottom inset and max width. */
       toastBottom: 100,
       toastMaxWidth: 280,
+      /** End-of-round score sheet column widths and list cap. */
+      endRoundNameWidth: 80,
+      endRoundScoreWidth: 52,
+      endRoundListMaxHeight: 280,
     },
     table: {
       /** Inset from the table container edge to the outermost seat box. */
@@ -165,16 +204,18 @@ export const tokens = {
       nameGap: 4,
       /** Vertical gap between opponent / deck / self bands. */
       deckGap: 8,
-      /** Approximate height of the opponent name line (for layout math). */
-      nameLineHeight: 18,
+      /** Height of the opponent seat header plate (avatar + name). */
+      seatHeaderHeight: 36,
+      /** Space reserved under the deck card for the count badge row. */
+      deckBadgeRowHeight: 28,
     },
     shake: { offset: 6 },
     choreography: {
       tableDimOpacity: 0.22,
       spotlightBorderWidth: 3,
-      spotlightBorderColor: '#2D6A4F',
+      spotlightBorderColor: '#C9A227',
       /** Fully-transparent variant of spotlightBorderColor for interpolation endpoints. */
-      spotlightBorderTransparent: 'rgba(45,106,79,0)',
+      spotlightBorderTransparent: 'rgba(201,162,39,0)',
       /** Match PlayingCard corner radius (W × this fraction, clamped in cardSizes). */
       ringRadiusFraction: 0.075,
     },

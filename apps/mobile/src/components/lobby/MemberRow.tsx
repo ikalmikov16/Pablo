@@ -1,31 +1,41 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { tokens } from '../../design/tokens';
+import { textStyle } from '../../design/typography';
 import { t } from '../../i18n';
+import { Avatar } from '../ui/Avatar';
 
 type Props = {
   readonly memberId: string;
+  readonly name: string;
   readonly isHost: boolean;
   readonly isSelf: boolean;
+  readonly onEdit?: () => void;
 };
 
-export function MemberRow({ memberId, isHost, isSelf }: Props) {
-  const name = isSelf ? t('game.you') : t('game.playerShort', { id: memberId.slice(0, 8) });
-  const initial = name.charAt(0).toUpperCase();
+export function MemberRow({ memberId, name, isHost, isSelf, onEdit }: Props) {
   return (
     <View style={styles.row}>
       <View style={styles.left}>
-        <View style={[styles.avatar, isSelf && styles.avatarSelf]}>
-          <Text style={[styles.avatarText, isSelf && styles.avatarTextSelf]}>{initial}</Text>
-        </View>
-        <Text style={styles.name}>{name}</Text>
+        <Avatar name={name} seedId={memberId} size={AVATAR_SIZE} />
+        <Text style={styles.name} numberOfLines={1}>
+          {name}
+        </Text>
       </View>
-      {isHost && <Text style={styles.host}>{t('lobby.room.hostBadge')}</Text>}
+      <View style={styles.right}>
+        {isHost && <Text style={styles.host}>{t('lobby.room.hostBadge')}</Text>}
+        {isSelf && onEdit && (
+          <TouchableOpacity onPress={onEdit} activeOpacity={0.7} hitSlop={HIT_SLOP}>
+            <Text style={styles.edit}>{t('lobby.room.editName')}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 }
 
 const AVATAR_SIZE = 32;
+const HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 };
 
 const styles = StyleSheet.create({
   row: {
@@ -40,33 +50,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.space.sm,
+    flexShrink: 1,
   },
-  avatar: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.game.surface.slotSelected,
+  right: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarSelf: {
-    backgroundColor: tokens.color.accent.primary,
-  },
-  avatarText: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.color.accent.primary,
-  },
-  avatarTextSelf: {
-    color: tokens.color.text.inverse,
+    gap: tokens.space.md,
   },
   name: {
-    fontSize: tokens.font.size.md,
+    ...textStyle('md'),
     color: tokens.color.text.primary,
+    flexShrink: 1,
   },
   host: {
-    fontSize: tokens.font.size.xs,
+    ...textStyle('xs', 'semibold'),
     color: tokens.color.accent.primary,
-    fontWeight: tokens.font.weight.semibold,
+  },
+  edit: {
+    ...textStyle('sm', 'semibold'),
+    color: tokens.color.accent.primary,
   },
 });

@@ -91,6 +91,50 @@ describe('createMockClient — basic flow', () => {
   });
 });
 
+describe('display names', () => {
+  test('setDisplayName then getDisplayNames returns the set name', async () => {
+    const client = makeClient();
+    await client.signIn();
+    await client.setDisplayName('  Alice  ');
+
+    const result = await client.getDisplayNames([HUMAN, BOT1]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data[HUMAN]).toBe('Alice');
+      // Bots are resolved by the display-name resolver, not the profile map.
+      expect(result.data[BOT1]).toBeNull();
+    }
+  });
+
+  test('blank name clears the stored display name', async () => {
+    const client = makeClient();
+    await client.signIn();
+    await client.setDisplayName('Bob');
+    await client.setDisplayName('   ');
+
+    const result = await client.getDisplayNames([HUMAN]);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data[HUMAN]).toBeNull();
+  });
+
+  test('subscribeDisplayNames fires immediately and on edits', async () => {
+    const client = makeClient();
+    await client.signIn();
+
+    const seen: Array<string | null> = [];
+    const unsub = client.subscribeDisplayNames([HUMAN], (names) => {
+      seen.push(names[HUMAN] ?? null);
+    });
+    await client.setDisplayName('Cara');
+    unsub();
+    await client.setDisplayName('Ignored');
+
+    expect(seen[0]).toBeNull();
+    expect(seen[seen.length - 1]).toBe('Cara');
+    expect(seen).not.toContain('Ignored');
+  });
+});
+
 describe('applyMove — idempotency and version', () => {
   async function setupGame() {
     const client = makeClient();

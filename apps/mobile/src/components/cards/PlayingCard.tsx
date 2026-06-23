@@ -7,31 +7,15 @@
  *  - All animation lives in worklets (useAnimatedStyle, withTiming, withSpring).
  *  - Themes are config: swapping theme re-renders without remounting this component.
  *
- * Architecture:
- *  - Root Animated.View handles translate (drag) and serves as the gesture target.
- *  - Back face Animated.View: rotateY 0→180, backfaceVisibility hidden.
- *    Contains a Skia Canvas for the decorative back pattern.
- *  - Front face Animated.View: rotateY 180→360, backfaceVisibility hidden.
- *    Contains a Skia Canvas for the card surface background + stroked border, and
- *    RN Text overlays for rank/suit labels (avoids font-file loading in the
- *    prototype phase — Skia text is a Phase 7 polish item).
- *  - Tap gesture toggles flip; Pan gesture drives drag; they race so a quick tap
- *    never accidentally starts a pan.
- *
- * Control model:
- *  - `faceUp` is the source of truth. When the prop changes, the card animates
- *    to that face. This is what powers in-game flips driven by store updates
- *    (e.g. PeekOverlay revealing a card after `peek_one` resolves).
- *  - When `flippable` is true, the tap gesture also flips the card and fires
- *    `onFlip`. Consumers that want the visual to follow their own state should
- *    mirror it through `faceUp` from their side; tapping a flippable card
- *    without echoing the flip in the parent state would lead to drift, so
- *    `flippable` is reserved for self-contained lab/preview surfaces.
+ * Rendering model: the card is authored in a fixed design space (240 units
+ * wide, see cardSizes.ts) and the whole Skia scene is scaled by one Group
+ * transform, so every size is the identical drawing. The face is one simple
+ * layout at every size: jumbo corner index + one large center suit.
  */
 import { memo, useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Canvas, Group, RoundedRect } from '@shopify/react-native-skia';
+import { Canvas, Group, Path, RoundedRect, Skia, type SkPath } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   interpolate,
@@ -42,11 +26,14 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import type { Card } from '@pablo/engine';
-import { CARD_FLIP_TIMING } from '../../feedback/motion';
+import type { Card, Suit } from '@pablo/engine';
 import type { CardTheme } from '../../design/cardTheme';
-import { rankLabel, suitColor, suitGlyph } from './internal/cardHelpers';
-import { sizesFor } from './internal/cardSizes';
+import { tokens } from '../../design/tokens';
+import { CARD_FLIP_TIMING } from '../../feedback/motion';
+import { rankLabel, suitColor } from './internal/cardHelpers';
+import { DESIGN_WIDTH, cardScale, design, radiusFor } from './internal/cardSizes';
+import { suitPath } from './internal/suitPaths';
+import { starPathSvg, zelligeTiles } from './internal/zellige';
 
 export type PlayingCardSize = { width: number; height: number };
 
@@ -73,12 +60,135 @@ export type PlayingCardProps = {
 };
 
 const DEFAULT_SIZE: PlayingCardSize = { width: 220, height: 320 };
-
-/** Spring config for snap-back after drag. */
+const SUITS: ReadonlyArray<Suit> = ['hearts', 'diamonds', 'clubs', 'spades'];
 const SNAP_SPRING = { damping: 18, stiffness: 220, mass: 1 } as const;
 
-/** Flip timing: inOut cubic, 450 ms — avoids the spring overshoot that causes
- *  double-crossover at the 90° half-turn. */
+function parseSkiaPath(svg: string, label: string): SkPath | null {
+  const path = Skia.Path.MakeFromSVGString(svg);
+  if (!path && __DEV__) {
+    console.error(`[PlayingCard] invalid SVG path: ${label}`);
+  }
+  return path;
+}
+
+function SuitAt({
+  path: suitSkPath,
+  cx,
+  cy,
+  size,
+  color,
+}: {
+  readonly path: SkPath;
+  readonly cx: number;
+  readonly cy: number;
+  readonly size: number;
+  readonly color: string;
+}) {
+  return (
+    <Group
+      transform={[
+        { translateX: cx },
+        { translateY: cy },
+        { scaleX: size },
+        { scaleY: size },
+        { translateX: -0.5 },
+        { translateY: -0.5 },
+      ]}
+    >
+      <Path path={suitSkPath} color={color} style="fill" />
+    </Group>
+  );
+}
+
+/** Plain back (classic / midnight) drawn in design units. */
+function PlainBackFace({
+  W,
+  H,
+  radius,
+  inset,
+  palette,
+}: {
+  readonly W: number;
+  readonly H: number;
+  readonly radius: number;
+  readonly inset: number;
+  readonly palette: CardTheme['back']['palette'];
+}) {
+  const diamond = 0.5 * Math.min(W - inset * 2, H - inset * 2);
+  return (
+    <>
+      <RoundedRect x={0} y={0} width={W} height={H} r={radius} color={palette.primary} />
+      <RoundedRect
+        x={inset}
+        y={inset}
+        width={W - inset * 2}
+        height={H - inset * 2}
+        r={Math.max(radius - 4, 2)}
+        color={palette.secondary}
+      />
+      <Group transform={[{ translateX: W / 2 }, { translateY: H / 2 }, { rotate: Math.PI / 4 }]}>
+        <RoundedRect
+          x={-diamond / 2}
+          y={-diamond / 2}
+          width={diamond}
+          height={diamond}
+          r={Math.max(2, diamond * 0.15)}
+          color={palette.accent}
+        />
+      </Group>
+    </>
+  );
+}
+
+/** Zellige back drawn in design units. */
+function ZelligeBackFace({
+  W,
+  H,
+  radius,
+  hairline,
+  palette,
+  tileSize,
+  starSkPath,
+}: {
+  readonly W: number;
+  readonly H: number;
+  readonly radius: number;
+  /** Smallest stroke that still renders 1 px on screen. */
+  readonly hairline: number;
+  readonly palette: CardTheme['back']['palette'];
+  readonly tileSize: number;
+  readonly starSkPath: SkPath;
+}) {
+  const inset = Math.max(10, tileSize * 0.35);
+  const tiles = zelligeTiles(W, H, tileSize);
+
+  return (
+    <>
+      <RoundedRect x={0} y={0} width={W} height={H} r={radius} color={palette.primary} />
+      <RoundedRect
+        x={inset}
+        y={inset}
+        width={W - inset * 2}
+        height={H - inset * 2}
+        r={Math.max(radius - 3, 2)}
+        color={palette.secondary}
+        style="stroke"
+        strokeWidth={Math.max(hairline, tileSize * 0.06)}
+      />
+      {tiles.map((tile, i) => (
+        <SuitAt
+          key={`z-${i}`}
+          path={starSkPath}
+          cx={tile.cx}
+          cy={tile.cy}
+          size={tile.scale}
+          color={tile.slot === 'accent' ? palette.accent : palette.secondary}
+        />
+      ))}
+    </>
+  );
+}
+
 function PlayingCardComponent({
   card,
   faceUp,
@@ -91,15 +201,18 @@ function PlayingCardComponent({
   suppressFlipAnimation = false,
 }: PlayingCardProps) {
   const { width: W, height: H } = size;
-  const s = useMemo(() => sizesFor(W), [W]);
 
-  // flipProgress: 0 = back visible, 1 = front visible.
+  // Design-space frame: one uniform scale, height re-expressed in design units.
+  const scale = cardScale(W);
+  const DH = H / scale;
+  const radiusD = radiusFor(W) / scale;
+  const hairline = 1 / scale;
+  const strokeD = Math.max(design.borderStroke, hairline);
+
   const flipProgress = useSharedValue(faceUp ? 1 : 0);
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
 
-  // Keep the flip animation in sync with the `faceUp` prop. When a parent
-  // updates `faceUp`, we animate to the new target rather than snapping.
   useEffect(() => {
     if (suppressFlipAnimation) {
       flipProgress.value = faceUp ? 1 : 0;
@@ -107,8 +220,6 @@ function PlayingCardComponent({
     }
     flipProgress.value = withTiming(faceUp ? 1 : 0, CARD_FLIP_TIMING);
   }, [faceUp, flipProgress, suppressFlipAnimation]);
-
-  // --- Gestures ---
 
   const tapGesture = Gesture.Tap()
     .maxDuration(250)
@@ -140,16 +251,12 @@ function PlayingCardComponent({
       dragY.value = withSpring(0, SNAP_SPRING);
     });
 
-  // Race: a quick tap wins before a pan threshold is crossed.
   const gesture = Gesture.Race(panGesture, tapGesture);
-
-  // --- Animated styles ---
 
   const rootStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: dragX.value }, { translateY: dragY.value }],
   }));
 
-  // Back face: starts visible (rotateY=0), hides at 180.
   const backStyle = useAnimatedStyle(() => ({
     transform: [
       { perspective: 1000 },
@@ -157,7 +264,6 @@ function PlayingCardComponent({
     ],
   }));
 
-  // Front face: starts hidden (rotateY=180), visible at 360.
   const frontStyle = useAnimatedStyle(() => ({
     transform: [
       { perspective: 1000 },
@@ -165,142 +271,106 @@ function PlayingCardComponent({
     ],
   }));
 
-  // --- Theme-derived render data (memoized per theme.id, not the whole theme object) ---
-
-  const backElements = useMemo(
-    () => ({
-      bg: theme.back.palette.primary,
-      secondary: theme.back.palette.secondary,
-      accent: theme.back.palette.accent,
-      r: s.radius,
-      inset: s.backInset,
-    }),
-    [theme.id, s.radius, s.backInset, theme.back.palette],
-  );
-
-  const faceElements = useMemo(
-    () => ({
-      bg: theme.face.palette.bg,
-      border: theme.face.palette.border,
-      r: s.radius,
-    }),
-    [theme.id, s.radius, theme.face.palette],
-  );
-
-  const backMotif = useMemo(() => {
-    const inset = s.backInset;
-    const innerW = W - inset * 2;
-    const innerH = H - inset * 2;
-    const diamond = 0.5 * Math.min(innerW, innerH);
-    return { inset, innerW, innerH, diamond, cx: W / 2, cy: H / 2 };
-  }, [W, H, s.backInset]);
+  const skiaPaths = useMemo(() => {
+    const suits = {} as Record<Suit, SkPath | null>;
+    for (const suit of SUITS) {
+      suits[suit] = parseSkiaPath(suitPath(suit), suit);
+    }
+    return { suits, star: parseSkiaPath(starPathSvg(), 'star') };
+  }, []);
 
   const textColor = suitColor(card.suit, theme);
   const label = rankLabel(card.rank);
-  const glyph = suitGlyph(card.suit);
+  const suitSkPath = skiaPaths.suits[card.suit];
 
-  // The card is "interactive" if any of its gestures are wired up. When it's
-  // not interactive we skip the GestureDetector entirely, because a
-  // GestureDetector still claims touches even when every contained gesture
-  // is `.enabled(false)`, which would block a parent <Pressable>/<TouchableOpacity>.
+  const cornerCx = design.cornerInsetX + design.cornerColW / 2;
+
+  const useZelligeBack = theme.back.pattern === 'zellige' && skiaPaths.star !== null;
   const interactive = flippable || draggable || onTap !== undefined;
 
   const inner = (
     <Animated.View style={[{ width: W, height: H }, rootStyle]}>
-      {/* ── BACK FACE ──
-          Solid two-tone back: outer surface + slightly inset secondary panel.
-          A zellige-inspired pattern fill replaces this in Phase 6 (`design.mdc`). */}
       <Animated.View style={[StyleSheet.absoluteFillObject, backStyle, styles.face]}>
         <Canvas style={StyleSheet.absoluteFillObject}>
-          <RoundedRect
-            x={0}
-            y={0}
-            width={W}
-            height={H}
-            r={backElements.r}
-            color={backElements.bg}
-          />
-          <RoundedRect
-            x={backElements.inset}
-            y={backElements.inset}
-            width={W - backElements.inset * 2}
-            height={H - backElements.inset * 2}
-            r={Math.max(backElements.r - 4, 2)}
-            color={backElements.secondary}
-          />
-          <Group
-            transform={[
-              { translateX: backMotif.cx },
-              { translateY: backMotif.cy },
-              { rotate: Math.PI / 4 },
-            ]}
-          >
-            <RoundedRect
-              x={-backMotif.diamond / 2}
-              y={-backMotif.diamond / 2}
-              width={backMotif.diamond}
-              height={backMotif.diamond}
-              r={Math.max(2, Math.round(backMotif.diamond * 0.15))}
-              color={backElements.accent}
-            />
+          <Group transform={[{ scale }]}>
+            {useZelligeBack ? (
+              <ZelligeBackFace
+                W={DESIGN_WIDTH}
+                H={DH}
+                radius={radiusD}
+                hairline={hairline}
+                palette={theme.back.palette}
+                tileSize={design.zelligeTile}
+                starSkPath={skiaPaths.star!}
+              />
+            ) : (
+              <PlainBackFace
+                W={DESIGN_WIDTH}
+                H={DH}
+                radius={radiusD}
+                inset={design.backInset}
+                palette={theme.back.palette}
+              />
+            )}
           </Group>
         </Canvas>
       </Animated.View>
 
-      {/* ── FRONT FACE ── */}
       <Animated.View style={[StyleSheet.absoluteFillObject, frontStyle, styles.face]}>
         <Canvas style={StyleSheet.absoluteFillObject}>
-          {/* Background fill — covers the whole card with the face bg colour */}
-          <RoundedRect
-            x={0}
-            y={0}
-            width={W}
-            height={H}
-            r={faceElements.r}
-            color={faceElements.bg}
-          />
-          {/* Border — STROKE, not fill. Inset by half the stroke width so it
-              lands fully on-card rather than being clipped at the edge. */}
-          <RoundedRect
-            x={s.borderStroke / 2}
-            y={s.borderStroke / 2}
-            width={W - s.borderStroke}
-            height={H - s.borderStroke}
-            r={faceElements.r}
-            color={faceElements.border}
-            style="stroke"
-            strokeWidth={s.borderStroke}
-          />
+          <Group transform={[{ scale }]}>
+            <RoundedRect
+              x={0}
+              y={0}
+              width={DESIGN_WIDTH}
+              height={DH}
+              r={radiusD}
+              color={theme.face.palette.bg}
+            />
+            <RoundedRect
+              x={strokeD / 2}
+              y={strokeD / 2}
+              width={DESIGN_WIDTH - strokeD}
+              height={DH - strokeD}
+              r={radiusD}
+              color={theme.face.palette.border}
+              style="stroke"
+              strokeWidth={strokeD}
+            />
+            {suitSkPath && (
+              <>
+                <SuitAt
+                  path={suitSkPath}
+                  cx={cornerCx}
+                  cy={design.cornerSuitCy}
+                  size={design.cornerSuit}
+                  color={textColor}
+                />
+                <SuitAt
+                  path={suitSkPath}
+                  cx={DESIGN_WIDTH / 2}
+                  cy={DH * design.centerSuitYFrac}
+                  size={design.centerSuit}
+                  color={textColor}
+                />
+              </>
+            )}
+          </Group>
         </Canvas>
-
-        {/* RN text overlays (pointerEvents none so gestures hit the wrapper). */}
-        <View
-          style={[styles.cornerTopLeft, { top: s.cornerInsetY, left: s.cornerInsetX }]}
-          pointerEvents="none"
-        >
-          <Text style={[styles.rankText, { fontSize: s.rank, color: textColor }]}>{label}</Text>
-          <Text style={[styles.suitSmall, { fontSize: s.suitSmall, color: textColor }]}>
-            {glyph}
-          </Text>
-        </View>
-
-        <View style={styles.centerPip} pointerEvents="none">
-          <Text style={[styles.centerSuit, { fontSize: s.centerSuit, color: textColor }]}>
-            {glyph}
-          </Text>
-        </View>
 
         <View
           style={[
-            styles.cornerBottomRight,
-            styles.rotated,
-            { bottom: s.cornerInsetY, right: s.cornerInsetX },
+            styles.corner,
+            {
+              left: design.cornerInsetX * scale,
+              top: design.cornerInsetY * scale,
+              width: design.cornerColW * scale,
+            },
           ]}
           pointerEvents="none"
         >
-          <Text style={[styles.rankText, { fontSize: s.rank, color: textColor }]}>{label}</Text>
-          <Text style={[styles.suitSmall, { fontSize: s.suitSmall, color: textColor }]}>
-            {glyph}
+          <Text style={[styles.rankText, { fontSize: design.rank * scale, color: textColor }]}>
+            {label}
           </Text>
         </View>
       </Animated.View>
@@ -315,27 +385,13 @@ const styles = StyleSheet.create({
   face: {
     backfaceVisibility: 'hidden',
   },
-  cornerTopLeft: {
+  corner: {
     position: 'absolute',
     alignItems: 'center',
-  },
-  cornerBottomRight: {
-    position: 'absolute',
-    alignItems: 'center',
-  },
-  rotated: {
-    transform: [{ rotate: '180deg' }],
-  },
-  centerPip: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   rankText: {
-    fontWeight: '800',
+    fontFamily: tokens.font.family.bold,
   },
-  suitSmall: {},
-  centerSuit: {},
 });
 
 export const PlayingCard = memo(PlayingCardComponent);

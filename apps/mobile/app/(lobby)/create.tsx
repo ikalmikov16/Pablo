@@ -1,27 +1,49 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { StyleSheet, Text, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '../../src/components/ui/Button';
 import { tokens } from '../../src/design/tokens';
+import { textStyle } from '../../src/design/typography';
 import { t } from '../../src/i18n';
+import { loadCachedName, saveCachedName } from '../../src/store/nameCache';
 import { usePabloClient } from '../../src/supabase/ClientProvider';
 import type { ClientErrorCode } from '../../src/supabase/types';
 
-const PLAYER_OPTIONS = [2, 3, 4] as const;
+const NAME_MAX_LENGTH = 20;
 
 export default function CreateRoomScreen() {
   const client = usePabloClient();
-  const [maxPlayers, setMaxPlayers] = useState<(typeof PLAYER_OPTIONS)[number]>(4);
+  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ClientErrorCode | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void loadCachedName().then((cached) => {
+      if (active && cached) setName(cached);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function handleCreate() {
     setLoading(true);
     setError(null);
     try {
-      await client.signIn();
-      const result = await client.createRoom({ maxPlayers });
+      const auth = await client.signIn();
+      if (!auth.ok) {
+        setError(auth.error);
+        return;
+      }
+      const trimmed = name.trim();
+      if (trimmed) {
+        await client.setDisplayName(trimmed);
+        await saveCachedName(trimmed);
+      }
+      const result = await client.createRoom({});
       if (!result.ok) {
         setError(result.error);
         return;
@@ -37,34 +59,27 @@ export default function CreateRoomScreen() {
       <Text style={styles.title}>{t('lobby.create.title')}</Text>
       <Text style={styles.subtitle}>{t('lobby.create.subtitle')}</Text>
 
+      <Text style={styles.label}>{t('lobby.name.label')}</Text>
+      <TextInput
+        style={styles.input}
+        value={name}
+        onChangeText={setName}
+        placeholder={t('lobby.name.placeholder')}
+        placeholderTextColor={tokens.color.text.secondary}
+        autoCapitalize="words"
+        autoCorrect={false}
+        maxLength={NAME_MAX_LENGTH}
+        returnKeyType="done"
+      />
+
       {error && <Text style={styles.error}>{t(`error.${error}`)}</Text>}
 
-      <View style={styles.options}>
-        {PLAYER_OPTIONS.map((count) => (
-          <TouchableOpacity
-            key={count}
-            style={[styles.optionBtn, maxPlayers === count && styles.optionBtnActive]}
-            onPress={() => setMaxPlayers(count)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.optionText, maxPlayers === count && styles.optionTextActive]}>
-              {t('lobby.create.maxPlayers', { count })}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {loading ? (
-        <ActivityIndicator color={tokens.color.accent.primary} size="large" />
-      ) : (
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={() => void handleCreate()}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.primaryBtnText}>{t('lobby.create.confirm')}</Text>
-        </TouchableOpacity>
-      )}
+      <Button
+        label={t('lobby.create.confirm')}
+        onPress={() => void handleCreate()}
+        loading={loading}
+        style={styles.confirm}
+      />
     </SafeAreaView>
   );
 }
@@ -78,54 +93,35 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   title: {
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('lg', 'semibold'),
     color: tokens.color.text.primary,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm'),
     color: tokens.color.text.secondary,
     textAlign: 'center',
   },
-  options: {
-    gap: tokens.space.sm,
+  label: {
+    ...textStyle('sm', 'semibold'),
+    color: tokens.color.text.secondary,
     marginTop: tokens.space.lg,
   },
-  optionBtn: {
+  input: {
+    ...textStyle('md'),
     borderWidth: 1,
     borderColor: tokens.color.border.subtle,
     borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.space.lg,
     paddingVertical: tokens.space.md,
-    alignItems: 'center',
-  },
-  optionBtnActive: {
-    borderColor: tokens.color.accent.primary,
-    backgroundColor: tokens.game.surface.winnerRowTint,
-  },
-  optionText: {
-    fontSize: tokens.font.size.md,
     color: tokens.color.text.primary,
   },
-  optionTextActive: {
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.color.accent.primary,
-  },
-  primaryBtn: {
+  confirm: {
     marginTop: tokens.space.xl,
-    backgroundColor: tokens.color.accent.primary,
-    borderRadius: tokens.radius.md,
-    paddingVertical: tokens.space.md,
-    alignItems: 'center',
-  },
-  primaryBtnText: {
-    color: tokens.color.text.inverse,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
   },
   error: {
+    ...textStyle('sm'),
     color: tokens.game.accent.pabloOnTurn,
     textAlign: 'center',
-    fontSize: tokens.font.size.sm,
   },
 });

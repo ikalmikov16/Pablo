@@ -30,6 +30,7 @@ import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 
 import type { Card, HandIndex, PlayerId } from '@pablo/engine';
 import { tokens } from '../../../design/tokens';
+import { textStyle } from '../../../design/typography';
 import { t } from '../../../i18n';
 import { useGameStore, useGameStoreShallow } from '../../../store/provider';
 import {
@@ -293,15 +294,15 @@ const styles = StyleSheet.create({
     padding: tokens.space.xl,
     width: '100%',
     gap: tokens.space.lg,
+    ...tokens.shadow.floating,
   },
   title: {
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('md', 'semibold'),
     color: tokens.color.text.primary,
     textAlign: 'center',
   },
   hint: {
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm'),
     color: tokens.color.text.secondary,
     textAlign: 'center',
   },
@@ -318,9 +319,8 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
   },
   opponentBtnText: {
+    ...textStyle('sm', 'semibold'),
     color: tokens.color.text.inverse,
-    fontWeight: tokens.font.weight.semibold,
-    fontSize: tokens.font.size.sm,
   },
   confirmBtn: {
     backgroundColor: tokens.color.accent.primary,
@@ -329,9 +329,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   confirmText: {
+    ...textStyle('sm', 'semibold'),
     color: tokens.color.text.inverse,
-    fontWeight: tokens.font.weight.semibold,
-    fontSize: tokens.font.size.sm,
   },
   skipBtn: {
     borderWidth: 1,
@@ -341,7 +340,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   skipText: {
+    ...textStyle('sm'),
     color: tokens.color.text.secondary,
-    fontSize: tokens.font.size.sm,
   },
 });

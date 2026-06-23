@@ -10,8 +10,10 @@
 
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { tokens } from '../../design/tokens';
+import { textStyle } from '../../design/typography';
 import { t } from '../../i18n';
 import { useGameStore, useGameStoreShallow } from '../../store/provider';
 import { selectActionBarItems, selectIsBusy, selectIsMyTurn } from '../../store/selectors';
@@ -45,11 +47,18 @@ export function ActionBar({ onCompositeAction, onDispatchMove }: Props) {
   const items = useGameStoreShallow(selectActionBarItems);
   const isBusy = useGameStore(selectIsBusy);
   const isMyTurn = useGameStore(selectIsMyTurn);
+  const insets = useSafeAreaInsets();
 
   if (items.length === 0) return null;
 
   return (
-    <View style={[styles.bar, isMyTurn && styles.barMyTurn]}>
+    <View
+      style={[
+        styles.bar,
+        isMyTurn && styles.barMyTurn,
+        { paddingBottom: insets.bottom + tokens.space.sm },
+      ]}
+    >
       {items.map((item) => {
         const isPablo = item.id === 'call_pablo';
         return (
@@ -60,6 +69,7 @@ export function ActionBar({ onCompositeAction, onDispatchMove }: Props) {
               isPablo && styles.btnPablo,
               isPablo && !item.enabled && styles.btnPabloDisabled,
               !isPablo && !item.enabled && styles.btnDisabled,
+              item.enabled && !isBusy && styles.btnRaised,
             ]}
             disabled={!item.enabled || isBusy}
             activeOpacity={0.75}
@@ -101,6 +111,9 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.md,
     alignItems: 'center',
   },
+  btnRaised: {
+    ...tokens.shadow.raised,
+  },
   btnDisabled: {
     backgroundColor: tokens.color.border.subtle,
   },
@@ -111,9 +124,9 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.game.accent.pabloOffTurn,
   },
   btnText: {
+    ...textStyle('sm', 'semibold'),
     color: tokens.color.text.inverse,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    textAlign: 'center',
   },
   btnTextDisabled: {
     color: tokens.color.text.secondary,

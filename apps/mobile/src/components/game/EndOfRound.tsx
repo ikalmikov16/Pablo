@@ -18,6 +18,7 @@ import Animated, {
 
 import type { Card, PlayerId } from '@pablo/engine';
 import { tokens } from '../../design/tokens';
+import { textStyle } from '../../design/typography';
 import { END_ROUND_ROW_STAGGER_MS, springFor } from '../../feedback/motion';
 import { t } from '../../i18n';
 import { useGameStore, useGameStoreShallow } from '../../store/provider';
@@ -192,27 +193,25 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: tokens.space.md,
     maxHeight: '85%',
+    ...tokens.shadow.floating,
   },
   title: {
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('lg', 'semibold'),
     color: tokens.color.text.primary,
     textAlign: 'center',
   },
   winnerLine: {
-    fontSize: tokens.font.size.md,
+    ...textStyle('md', 'semibold'),
     color: tokens.color.accent.primary,
     textAlign: 'center',
-    fontWeight: tokens.font.weight.semibold,
   },
   totalsLabel: {
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm', 'semibold'),
     color: tokens.color.text.secondary,
-    fontWeight: tokens.font.weight.semibold,
     marginTop: tokens.space.sm,
   },
   scoreList: {
-    maxHeight: 280,
+    maxHeight: tokens.game.size.endRoundListMaxHeight,
   },
   scoreListContent: {
     gap: tokens.space.sm,
@@ -231,27 +230,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.xs,
   },
   scoreName: {
-    width: 80,
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm'),
+    width: tokens.game.size.endRoundNameWidth,
     color: tokens.color.text.primary,
   },
   winnerText: {
+    ...textStyle('sm', 'semibold'),
     color: tokens.color.accent.primary,
-    fontWeight: tokens.font.weight.semibold,
   },
   handReveal: {
     flex: 1,
     alignItems: 'center',
   },
   scoreValue: {
-    width: 52,
+    ...textStyle('sm'),
+    width: tokens.game.size.endRoundScoreWidth,
     textAlign: 'right',
-    fontSize: tokens.font.size.sm,
     color: tokens.color.text.secondary,
   },
   waiting: {
+    ...textStyle('sm'),
     textAlign: 'center',
-    fontSize: tokens.font.size.sm,
     color: tokens.color.text.secondary,
   },
   buttonRow: {
@@ -267,9 +266,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryBtnText: {
+    ...textStyle('md', 'semibold'),
     color: tokens.color.text.inverse,
-    fontWeight: tokens.font.weight.semibold,
-    fontSize: tokens.font.size.md,
   },
   secondaryBtn: {
     flex: 1,
@@ -280,7 +278,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryBtnText: {
+    ...textStyle('md'),
     color: tokens.color.text.secondary,
-    fontSize: tokens.font.size.md,
   },
 });

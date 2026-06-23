@@ -54,6 +54,16 @@ export function hapticForMoveError(): void {
   }
 }
 
+/** Light selection tick for UI button presses (chrome screens). */
+export function hapticTap(): void {
+  if (Platform.OS === 'web') return;
+  try {
+    void Haptics.selectionAsync();
+  } catch {
+    // Haptic engine unavailable — silently skip.
+  }
+}
+
 /** Soft tap when the turn passes to the local player. */
 export function hapticForTurnStart(): void {
   if (Platform.OS === 'web') return;

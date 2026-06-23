@@ -9,7 +9,8 @@ import { tokens } from '../../../design/tokens';
 
 const CARD_ASPECT = 1.46;
 const MIN_OPPONENT_CARD_WIDTH = 44;
-const { seatPadding, seatGap, handGap, nameGap, deckGap, nameLineHeight } = tokens.game.table;
+const { seatPadding, seatGap, handGap, nameGap, deckGap, seatHeaderHeight, deckBadgeRowHeight } =
+  tokens.game.table;
 
 export type SeatBox = {
   readonly top: number;
@@ -51,7 +52,7 @@ function gridSize(
 
 function opponentSeatContentHeight(cardWidth: number): number {
   const { height: gridH } = gridSize(cardWidth, 2, 2, handGap);
-  return nameLineHeight + nameGap + gridH;
+  return seatHeaderHeight + nameGap + gridH;
 }
 
 function opponentSeatContentWidth(cardWidth: number): number {
@@ -87,8 +88,20 @@ function boxesOverlap(a: SeatBox, b: SeatBox): boolean {
   );
 }
 
-/** Short tables centre the deck in the gap between opponents and own hand. */
-const COMPACT_TABLE_MAX_H = 640;
+function deckBandHeight(deckCardH: number): number {
+  return deckCardH + tokens.space.xs + deckBadgeRowHeight;
+}
+
+/** Place the deck box so the card row — not the badge — sits on the table centre line. */
+function deckTopForCardCenter(
+  tableCenterY: number,
+  deckCardH: number,
+  minDeckTop: number,
+  maxDeckTop: number,
+): number {
+  const idealTop = Math.round(tableCenterY - deckCardH / 2);
+  return Math.max(minDeckTop, Math.min(maxDeckTop, idealTop));
+}
 
 /** Exported for tests — detect overlap between any two boxes in a layout. */
 export function layoutHasOverlaps(layout: SeatLayout): boolean {
@@ -177,7 +190,7 @@ export function seatLayout(
 ): SeatLayout {
   const deckCardWidth = tokens.game.size.deckCard;
   const deckCardH = Math.floor(deckCardWidth * CARD_ASPECT);
-  const deckBandH = deckCardH + tokens.space.xs + nameLineHeight + deckGap;
+  const deckBandH = deckBandHeight(deckCardH);
   /** Match deck card aspect so deck→drawn flights never squash vertically. */
   const drawnBandH = deckCardH;
   const deckW = deckCardWidth * 2 + tokens.space.xl;
@@ -188,7 +201,6 @@ export function seatLayout(
   const baseLeft = insets.left + seatPadding;
   const bottom = layoutH - insets.bottom - seatPadding;
   const tableCenterY = (baseTop + bottom) / 2;
-  const compactTable = layoutH < COMPACT_TABLE_MAX_H;
 
   let oppCardW: number =
     opponentCount === 3 ? tokens.game.size.opponentCardSm : tokens.game.size.opponentCardMd;
@@ -202,14 +214,7 @@ export function seatLayout(
 
     const minDeckTop = oppTop + oppH + deckGap;
     const maxDeckTop = selfTop - deckGap - deckBandH;
-    let deckTop: number;
-    if (compactTable) {
-      const midH = maxDeckTop - minDeckTop;
-      deckTop = minDeckTop + Math.max(0, Math.floor((midH - deckBandH) / 2));
-    } else {
-      deckTop = Math.round(tableCenterY - deckBandH / 2);
-      deckTop = Math.max(minDeckTop, Math.min(maxDeckTop, deckTop));
-    }
+    const deckTop = deckTopForCardCenter(tableCenterY, deckCardH, minDeckTop, maxDeckTop);
 
     const opponentSeatW = opponentSeatContentWidth(oppCardW);
     const gap = interSeatGap(opponentCount, opponentSeatW, usableW);
@@ -277,9 +282,7 @@ export function seatLayout(
   const oppTop = baseTop;
   const minDeckTop = oppTop + oppH + deckGap;
   const maxDeckTop = selfTop - deckGap - deckBandH;
-  const deckTop = compactTable
-    ? minDeckTop + Math.max(0, Math.floor((maxDeckTop - minDeckTop) / 2))
-    : Math.max(minDeckTop, Math.min(maxDeckTop, Math.round(tableCenterY - deckBandH / 2)));
+  const deckTop = deckTopForCardCenter(tableCenterY, deckCardH, minDeckTop, maxDeckTop);
 
   const opponentSeatW = opponentSeatContentWidth(MIN_OPPONENT_CARD_WIDTH);
   const gap = interSeatGap(opponentCount, opponentSeatW, usableW);

@@ -26,6 +26,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import type { Card, Move } from '@pablo/engine';
 import { defaultCardTheme } from '../../design/cardTheme';
 import { tokens } from '../../design/tokens';
+import { textStyle } from '../../design/typography';
 import { springFor } from '../../feedback/motion';
 import { t } from '../../i18n';
 import { resolveDisplayName } from '../../store/displayName';
@@ -192,14 +193,14 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.color.surface.card,
     borderRadius: tokens.radius.lg,
     padding: tokens.space.xl,
+    ...tokens.shadow.floating,
     alignItems: 'center',
     gap: tokens.space.lg,
     marginHorizontal: tokens.space.xl,
     width: '90%',
   },
   title: {
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('lg', 'semibold'),
     color: tokens.color.text.primary,
     textAlign: 'center',
   },
@@ -222,7 +223,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   waiting: {
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm'),
     color: tokens.color.text.secondary,
     textAlign: 'center',
   },
@@ -241,8 +242,7 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.color.border.subtle,
   },
   confirmText: {
+    ...textStyle('md', 'semibold'),
     color: tokens.color.text.inverse,
-    fontWeight: tokens.font.weight.semibold,
-    fontSize: tokens.font.size.md,
   },
 });

@@ -178,6 +178,10 @@ Events ride the same `game:{gameId}` channel. Each broadcast tick prompts a `get
 
 Both tables are added to the `supabase_realtime` publication (migration `20260609130000`) — `postgres_changes` delivers nothing for unpublished tables. The filter columns (`rooms.id`, `room_members.room_id`) are part of each primary key, so DELETE events carry them without `REPLICA IDENTITY FULL`.
 
+### Display-name subscriptions — postgres_changes on `profiles`
+
+`profiles` is SELECT-able by any authenticated user, so the lobby can subscribe directly to `postgres_changes` on `profiles` filtered by `id=in.(…member ids…)`. This powers `subscribeDisplayNames`: a player editing their name while waiting in the lobby broadcasts to the other waiting players, who refetch the affected names. `profiles` is added to the `supabase_realtime` publication in migration `20260623000000`. `profiles.id` is the primary key and the only filter column, so UPDATE events carry it without `REPLICA IDENTITY FULL`. Display names are stored on `profiles.display_name` (no new column was needed); `setDisplayName` is a direct RLS-guarded `UPDATE` on the caller's own row.
+
 This pattern is simple and cheat-proof: clients never see hidden data, and the two streams arrive in the order moves were applied (version-monotonic).
 
 ## Hidden-info contract
@@ -220,6 +224,12 @@ The mobile app talks to the backend through the `PabloClient` interface defined 
 ```ts
 type PabloClient = {
   signIn(): Promise<ClientResult<PlayerId>>;
+  setDisplayName(name: string): Promise<ClientResult<void>>;
+  getDisplayNames(ids: ReadonlyArray<PlayerId>): Promise<ClientResult<DisplayNameMap>>;
+  subscribeDisplayNames(
+    ids: ReadonlyArray<PlayerId>,
+    onChange: (names: DisplayNameMap) => void,
+  ): Unsubscribe;
   createRoom(opts: {
     rules?: Partial<GameRules>;
     maxPlayers?: number;
@@ -251,19 +261,22 @@ type ClientResult<T> = { ok: true; data: T } | { ok: false; error: ClientErrorCo
 
 Mapping to this schema:
 
-| `PabloClient` method  | Supabase implementation                                                                                                             |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `signIn`              | `supabase.auth.signInAnonymously()`; resolves to the anon user id. The `auth.users` insert trigger auto-creates the `profiles` row. |
-| `createRoom`          | RPC into the `create_room` SQL function (atomic room + first member insert).                                                        |
-| `joinRoom`            | Edge function `joinRoom`.                                                                                                           |
-| `leaveRoom`           | Edge function `leaveRoom`.                                                                                                          |
-| `startGame`           | Edge function `startGame` (host only).                                                                                              |
-| `returnToLobby`       | Edge function `returnToLobby` (host only, after round end).                                                                         |
-| `getActiveSession`    | Query `room_members` → `rooms` where `status='playing'` and `current_game_id IS NOT NULL`.                                          |
-| `applyMove`           | Edge function `applyMove` (idempotency + expectedVersion required).                                                                 |
-| `subscribeRoom`       | `postgres_changes` subscription on `rooms` and `room_members` filtered by `room_id`.                                                |
-| `subscribePlayerView` | View stream: subscribe to broadcast `game:{gameId}`, fetch `getPlayerView` on tick. Callback receives `(view, version)`.            |
-| `subscribeGameEvents` | Event stream: same channel, on tick call `getEventsSince(lastSeenVersion)`. Callback receives batched events in version+seq order.  |
+| `PabloClient` method    | Supabase implementation                                                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `signIn`                | `supabase.auth.signInAnonymously()`; resolves to the anon user id. The `auth.users` insert trigger auto-creates the `profiles` row. |
+| `setDisplayName`        | `profiles.update({ display_name }).eq('id', auth.uid())` (RLS `update_own_profile`).                                                |
+| `getDisplayNames`       | `profiles.select('id, display_name').in('id', ids)` (RLS `select_profiles_all`).                                                    |
+| `subscribeDisplayNames` | One-shot fetch + `postgres_changes` channel on `profiles` filtered `id=in.(…)`; refetches on change.                                |
+| `createRoom`            | RPC into the `create_room` SQL function (atomic room + first member insert).                                                        |
+| `joinRoom`              | Edge function `joinRoom`.                                                                                                           |
+| `leaveRoom`             | Edge function `leaveRoom`.                                                                                                          |
+| `startGame`             | Edge function `startGame` (host only).                                                                                              |
+| `returnToLobby`         | Edge function `returnToLobby` (host only, after round end).                                                                         |
+| `getActiveSession`      | Query `room_members` → `rooms` where `status='playing'` and `current_game_id IS NOT NULL`.                                          |
+| `applyMove`             | Edge function `applyMove` (idempotency + expectedVersion required).                                                                 |
+| `subscribeRoom`         | `postgres_changes` subscription on `rooms` and `room_members` filtered by `room_id`.                                                |
+| `subscribePlayerView`   | View stream: subscribe to broadcast `game:{gameId}`, fetch `getPlayerView` on tick. Callback receives `(view, version)`.            |
+| `subscribeGameEvents`   | Event stream: same channel, on tick call `getEventsSince(lastSeenVersion)`. Callback receives batched events in version+seq order.  |
 
 ### `ClientErrorCode`
 

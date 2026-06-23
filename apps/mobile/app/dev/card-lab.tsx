@@ -1,11 +1,5 @@
 /**
  * Card Lab — dev-only screen (gated behind __DEV__ at the entry point).
- *
- * Layout:
- *  1. Top bar — title + theme-cycle button.
- *  2. Interactive zone — one draggable + flippable card, hint text.
- *  3. Variants grid — read-only thumbnails across permutations (suits × themes × face state).
- *     Acts as an in-app Storybook without the dependency.
  */
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -15,23 +9,50 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Card } from '@pablo/engine';
 import { PlayingCard } from '../../src/components/cards/PlayingCard';
 import type { CardTheme } from '../../src/design/cardTheme';
-import { nextTheme, defaultCardTheme } from '../../src/design/cardTheme';
+import { defaultCardTheme, nextTheme } from '../../src/design/cardTheme';
 import { tokens } from '../../src/design/tokens';
+import { textStyle } from '../../src/design/typography';
 import { t } from '../../src/i18n';
 
-// ---------------------------------------------------------------------------
-// Fixture cards — plain literals, no engine state. (Hard rule #6)
-// ---------------------------------------------------------------------------
 const ACE_HEARTS: Card = { suit: 'hearts', rank: 1 };
-const SEVEN_CLUBS: Card = { suit: 'clubs', rank: 7 }; // power card
-const KING_HEARTS: Card = { suit: 'hearts', rank: 13 }; // K♥ = 0 value
-const TEN_SPADES: Card = { suit: 'spades', rank: 10 };
-const QUEEN_DIAMONDS: Card = { suit: 'diamonds', rank: 12 };
 const TWO_CLUBS: Card = { suit: 'clubs', rank: 2 };
+const FIVE_DIAMONDS: Card = { suit: 'diamonds', rank: 5 };
+const EIGHT_SPADES: Card = { suit: 'spades', rank: 8 };
+const TEN_HEARTS: Card = { suit: 'hearts', rank: 10 };
+const JACK_CLUBS: Card = { suit: 'clubs', rank: 11 };
+const QUEEN_DIAMONDS: Card = { suit: 'diamonds', rank: 12 };
+const KING_HEARTS: Card = { suit: 'hearts', rank: 13 };
 
-const VARIANT_CARDS: Card[] = [ACE_HEARTS, SEVEN_CLUBS, KING_HEARTS, TEN_SPADES];
+const VARIANT_CARDS: Card[] = [ACE_HEARTS, TWO_CLUBS, KING_HEARTS, TEN_HEARTS];
+const RANK_STRIP: Card[] = [
+  ACE_HEARTS,
+  TWO_CLUBS,
+  FIVE_DIAMONDS,
+  EIGHT_SPADES,
+  TEN_HEARTS,
+  JACK_CLUBS,
+  QUEEN_DIAMONDS,
+  KING_HEARTS,
+];
 
 const THUMBNAIL_SIZE = { width: 72, height: 104 };
+const LARGE_SIZE = { width: 220, height: 320 };
+/** Wide enough to exercise the standard (full-anatomy) layout mode. */
+const STRIP_SIZE = { width: 140, height: 204 };
+
+/** Real in-game widths from tokens — the legibility acceptance surface. */
+const GAME_SIZES: ReadonlyArray<{ card: Card; width: number }> = [
+  { card: TEN_HEARTS, width: tokens.game.size.drawnFlowCard },
+  { card: QUEEN_DIAMONDS, width: tokens.game.size.deckCard },
+  { card: EIGHT_SPADES, width: tokens.game.size.peekCard },
+  { card: ACE_HEARTS, width: tokens.game.size.ownCardMax },
+  { card: KING_HEARTS, width: tokens.game.size.opponentCardMd },
+  { card: FIVE_DIAMONDS, width: tokens.game.size.endRoundCard },
+];
+
+function gameSize(width: number) {
+  return { width, height: Math.floor(width * 1.46) };
+}
 
 export default function CardLabScreen() {
   const router = useRouter();
@@ -44,7 +65,6 @@ export default function CardLabScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* ── Top bar ── */}
       <View style={styles.topBar}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
           <Text style={styles.backBtnText}>←</Text>
@@ -58,12 +78,12 @@ export default function CardLabScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* ── Interactive card ── */}
         <View style={styles.interactiveZone}>
           <PlayingCard
             card={QUEEN_DIAMONDS}
             faceUp={showFaceUp}
             theme={theme}
+            size={LARGE_SIZE}
             draggable
             flippable
             onFlip={setShowFaceUp}
@@ -71,14 +91,49 @@ export default function CardLabScreen() {
           <Text style={styles.hintText}>{t('dev.cardLab.tapToFlip')}</Text>
         </View>
 
-        {/* ── Variants grid ── */}
+        <View style={styles.variantsSection}>
+          <Text style={styles.variantsTitle}>{t('dev.cardLab.rankStrip')}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.stripRow}>
+              {RANK_STRIP.map((card) => (
+                <PlayingCard
+                  key={`rank-${card.suit}-${card.rank}`}
+                  card={card}
+                  faceUp={true}
+                  theme={theme}
+                  size={STRIP_SIZE}
+                  draggable={false}
+                  flippable={false}
+                />
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        <View style={styles.variantsSection}>
+          <Text style={styles.variantsTitle}>{t('dev.cardLab.gameSizes')}</Text>
+          <View style={styles.feltTile}>
+            <View style={styles.gameSizeRow}>
+              {GAME_SIZES.map(({ card, width }) => (
+                <PlayingCard
+                  key={`game-${card.suit}-${card.rank}-${width}`}
+                  card={card}
+                  faceUp={true}
+                  theme={theme}
+                  size={gameSize(width)}
+                  draggable={false}
+                  flippable={false}
+                />
+              ))}
+            </View>
+          </View>
+        </View>
+
         <View style={styles.variantsSection}>
           <Text style={styles.variantsTitle}>{t('dev.cardLab.variantsTitle')}</Text>
-          {/* Row per card, 2 themes × 2 face states = 4 thumbnails */}
           {VARIANT_CARDS.map((card) => (
             <VariantRow key={`${card.suit}-${card.rank}`} card={card} theme={theme} />
           ))}
-          {/* Two Clubs face-down × 2, to verify back motif scales at thumbnail size */}
           <View style={styles.variantRow}>
             <PlayingCard
               card={TWO_CLUBS}
@@ -106,7 +161,6 @@ export default function CardLabScreen() {
 function VariantRow({ card, theme }: { card: Card; theme: CardTheme }) {
   return (
     <View style={styles.variantRow}>
-      {/* Face up */}
       <PlayingCard
         card={card}
         faceUp={true}
@@ -115,7 +169,6 @@ function VariantRow({ card, theme }: { card: Card; theme: CardTheme }) {
         draggable={false}
         flippable={false}
       />
-      {/* Face down */}
       <PlayingCard
         card={card}
         faceUp={false}
@@ -146,13 +199,12 @@ const styles = StyleSheet.create({
     padding: tokens.space.xs,
   },
   backBtnText: {
-    fontSize: tokens.font.size.lg,
+    ...textStyle('lg'),
     color: tokens.color.accent.primary,
   },
   screenTitle: {
     flex: 1,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('md', 'semibold'),
     color: tokens.color.text.primary,
     textAlign: 'center',
   },
@@ -163,8 +215,7 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.pill,
   },
   themeBtnText: {
-    fontSize: tokens.font.size.xs,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('xs', 'semibold'),
     color: tokens.color.text.inverse,
   },
   scrollContent: {
@@ -177,7 +228,7 @@ const styles = StyleSheet.create({
     gap: tokens.space.xl,
   },
   hintText: {
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm'),
     color: tokens.color.text.secondary,
   },
   variantsSection: {
@@ -185,14 +236,28 @@ const styles = StyleSheet.create({
     gap: tokens.space.lg,
   },
   variantsTitle: {
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('md', 'semibold'),
     color: tokens.color.text.secondary,
     marginBottom: tokens.space.sm,
+  },
+  feltTile: {
+    backgroundColor: tokens.game.surface.table,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.space.md,
   },
   variantRow: {
     flexDirection: 'row',
     gap: tokens.space.md,
     flexWrap: 'wrap',
+  },
+  stripRow: {
+    flexDirection: 'row',
+    gap: tokens.space.md,
+  },
+  gameSizeRow: {
+    flexDirection: 'row',
+    gap: tokens.space.md,
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
   },
 });

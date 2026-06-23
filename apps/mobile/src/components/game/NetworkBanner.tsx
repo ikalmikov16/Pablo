@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { tokens } from '../../design/tokens';
+import { textStyle } from '../../design/typography';
 import { t } from '../../i18n';
 import { useGameStore } from '../../store/provider';
 import { selectNetworkError } from '../../store/selectors';
@@ -18,14 +19,13 @@ export function NetworkBanner() {
 
 const styles = StyleSheet.create({
   banner: {
-    backgroundColor: tokens.game.accent.pabloOnTurn,
+    backgroundColor: tokens.game.surface.networkBg,
     paddingVertical: tokens.space.xs,
     paddingHorizontal: tokens.space.md,
     alignItems: 'center',
   },
   text: {
     color: tokens.color.text.inverse,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('sm', 'semibold'),
   },
 });

@@ -1,9 +1,11 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '../../src/components/ui/Button';
 import { tokens } from '../../src/design/tokens';
+import { textStyle } from '../../src/design/typography';
 import { t } from '../../src/i18n';
 import { getMockClient } from '../../src/supabase/client';
 import type { ClientErrorCode } from '../../src/supabase/types';
@@ -57,14 +59,7 @@ export default function NewGameScreen() {
       ) : (
         <View style={styles.options}>
           {BOT_OPTIONS.map(({ count, label }) => (
-            <TouchableOpacity
-              key={count}
-              style={styles.optionBtn}
-              onPress={() => void start(count)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.optionText}>{label}</Text>
-            </TouchableOpacity>
+            <Button key={count} label={label} onPress={() => void start(count)} />
           ))}
         </View>
       )}
@@ -82,8 +77,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.xl,
   },
   title: {
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('lg', 'semibold'),
     color: tokens.color.text.primary,
     textAlign: 'center',
   },
@@ -91,20 +85,9 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: tokens.space.md,
   },
-  optionBtn: {
-    backgroundColor: tokens.color.accent.primary,
-    borderRadius: tokens.radius.md,
-    paddingVertical: tokens.space.lg,
-    alignItems: 'center',
-  },
-  optionText: {
-    color: tokens.color.text.inverse,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
-  },
   error: {
+    ...textStyle('sm'),
     color: tokens.game.accent.pabloOnTurn,
-    fontSize: tokens.font.size.sm,
     textAlign: 'center',
   },
 });

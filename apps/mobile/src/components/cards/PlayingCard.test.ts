@@ -3,45 +3,41 @@
  * No React, no Skia, no Reanimated — only plain data transforms.
  */
 import { describe, expect, it } from 'bun:test';
-import { defaultCardTheme, midnightCardTheme } from '../../design/cardTheme';
+import {
+  classicLightCardTheme,
+  defaultCardTheme,
+  midnightCardTheme,
+  zelligeCardTheme,
+} from '../../design/cardTheme';
 import { isRedSuit, rankLabel, suitColor, suitGlyph } from './internal/cardHelpers';
-import { radiusFor, sizesSnapshot } from './internal/cardSizes';
+import { DESIGN_WIDTH, cardScale, design, radiusFor } from './internal/cardSizes';
 
-describe('proportional card sizing', () => {
+describe('card design space', () => {
   it('radiusFor clamps and scales at 44 / 88 / 220 px', () => {
     expect(radiusFor(44)).toBe(4);
     expect(radiusFor(88)).toBe(7);
     expect(radiusFor(220)).toBe(17);
   });
 
-  it('sizesSnapshot matches reference table', () => {
-    expect(sizesSnapshot(44)).toEqual({
-      width: 44,
-      radius: 4,
-      rank: 8,
-      suitSmall: 5,
-      centerSuit: 20,
-      borderStroke: 1,
-      backInset: 4,
-    });
-    expect(sizesSnapshot(88)).toEqual({
-      width: 88,
-      radius: 7,
-      rank: 16,
-      suitSmall: 11,
-      centerSuit: 40,
-      borderStroke: 1,
-      backInset: 7,
-    });
-    expect(sizesSnapshot(220)).toEqual({
-      width: 220,
-      radius: 17,
-      rank: 40,
-      suitSmall: 26,
-      centerSuit: 99,
-      borderStroke: 3,
-      backInset: 17,
-    });
+  it('cardScale is the identity at DESIGN_WIDTH and linear elsewhere', () => {
+    expect(cardScale(DESIGN_WIDTH)).toBe(1);
+    expect(cardScale(120)).toBe(0.5);
+    expect(cardScale(48)).toBeCloseTo(0.2);
+  });
+
+  it('corner column centers in the left half of the card', () => {
+    const center = design.cornerInsetX + design.cornerColW / 2;
+    expect(center).toBeLessThan(DESIGN_WIDTH / 2);
+  });
+
+  it('corner suit sits below the rank text block', () => {
+    expect(design.cornerSuitCy).toBeGreaterThan(design.cornerInsetY + design.rank);
+  });
+
+  it('center suit fits inside the card width with margins', () => {
+    expect(design.centerSuit).toBeLessThan(DESIGN_WIDTH - design.borderStroke * 2);
+    expect(design.centerSuitYFrac).toBeGreaterThan(0.5);
+    expect(design.centerSuitYFrac).toBeLessThan(1);
   });
 });
 
@@ -71,22 +67,29 @@ describe('isRedSuit', () => {
 
 describe('suitColor', () => {
   it('returns the red palette color for hearts', () => {
-    expect(suitColor('hearts', defaultCardTheme)).toBe(defaultCardTheme.face.palette.red);
+    expect(suitColor('hearts', classicLightCardTheme)).toBe(classicLightCardTheme.face.palette.red);
   });
 
   it('returns the black palette color for spades', () => {
-    expect(suitColor('spades', defaultCardTheme)).toBe(defaultCardTheme.face.palette.black);
+    expect(suitColor('spades', classicLightCardTheme)).toBe(
+      classicLightCardTheme.face.palette.black,
+    );
   });
 
   it('returns different colors for different themes', () => {
-    const classicRed = suitColor('hearts', defaultCardTheme);
+    const classicRed = suitColor('hearts', classicLightCardTheme);
     const midnightRed = suitColor('hearts', midnightCardTheme);
     expect(classicRed).not.toBe(midnightRed);
   });
 
   it('red and black colors differ within the same theme', () => {
-    const red = suitColor('hearts', defaultCardTheme);
-    const black = suitColor('spades', defaultCardTheme);
+    const red = suitColor('hearts', zelligeCardTheme);
+    const black = suitColor('spades', zelligeCardTheme);
     expect(red).not.toBe(black);
+  });
+
+  it('default theme resolves classic-light palette slots', () => {
+    expect(suitColor('hearts', defaultCardTheme)).toBe(classicLightCardTheme.face.palette.red);
+    expect(suitColor('clubs', defaultCardTheme)).toBe(classicLightCardTheme.face.palette.black);
   });
 });

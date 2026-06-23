@@ -25,6 +25,7 @@ import type {
   ActiveSession,
   ClientErrorCode,
   ClientResult,
+  DisplayNameMap,
   GameId,
   Room,
   RoomId,
@@ -81,6 +82,11 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
 
   const rooms = new Map<RoomId, Room>();
   const roomSubs = new Map<RoomId, Set<(r: Room) => void>>();
+  const displayNames = new Map<PlayerId, string>();
+  const nameSubs = new Set<{
+    readonly ids: ReadonlyArray<PlayerId>;
+    readonly cb: (names: DisplayNameMap) => void;
+  }>();
   let activeSession: ActiveSession | null = null;
 
   // Per-game state: record + per-bot RNGs
@@ -115,6 +121,44 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
 
   async function signIn(): Promise<ClientResult<PlayerId>> {
     return ok(localPlayerId);
+  }
+
+  // ── display names ───────────────────────────────────────────────────────────
+
+  function namesFor(ids: ReadonlyArray<PlayerId>): DisplayNameMap {
+    const map: Record<string, string | null> = {};
+    for (const id of ids) map[id] = displayNames.get(id) ?? null;
+    return map;
+  }
+
+  function notifyNames(): void {
+    for (const sub of nameSubs) sub.cb(namesFor(sub.ids));
+  }
+
+  async function setDisplayName(name: string): Promise<ClientResult<void>> {
+    const trimmed = name.trim();
+    if (trimmed.length > 0) displayNames.set(localPlayerId, trimmed);
+    else displayNames.delete(localPlayerId);
+    notifyNames();
+    return ok(undefined);
+  }
+
+  async function getDisplayNames(
+    ids: ReadonlyArray<PlayerId>,
+  ): Promise<ClientResult<DisplayNameMap>> {
+    return ok(namesFor(ids));
+  }
+
+  function subscribeDisplayNames(
+    ids: ReadonlyArray<PlayerId>,
+    onChange: (names: DisplayNameMap) => void,
+  ): Unsubscribe {
+    const sub = { ids, cb: onChange };
+    nameSubs.add(sub);
+    onChange(namesFor(ids));
+    return () => {
+      nameSubs.delete(sub);
+    };
   }
 
   // ── createRoom ────────────────────────────────────────────────────────────
@@ -328,6 +372,9 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
 
   return {
     signIn,
+    setDisplayName,
+    getDisplayNames,
+    subscribeDisplayNames,
     createRoom,
     joinRoom,
     leaveRoom,

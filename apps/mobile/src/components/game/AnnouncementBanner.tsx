@@ -17,6 +17,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { tokens } from '../../design/tokens';
+import { textStyle } from '../../design/typography';
 import { springFor, timingFor } from '../../feedback/motion';
 import { useGameStore } from '../../store/provider';
 import { selectAnnouncement } from '../../store/selectors';
@@ -62,11 +63,11 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.xs,
     marginTop: tokens.space.xs,
     maxWidth: '92%',
+    ...tokens.shadow.raised,
   },
   text: {
+    ...textStyle('xs', 'semibold'),
     color: tokens.color.text.primary,
-    fontSize: tokens.font.size.xs,
-    fontWeight: tokens.font.weight.semibold,
     textAlign: 'center',
   },
 });

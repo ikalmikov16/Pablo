@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'bun:test';
-import { cardThemes, defaultCardTheme, midnightCardTheme, nextTheme } from './cardTheme';
+import {
+  cardThemes,
+  classicLightCardTheme,
+  defaultCardTheme,
+  midnightCardTheme,
+  nextTheme,
+  zelligeCardTheme,
+} from './cardTheme';
 
 describe('cardThemes registry', () => {
-  it('contains exactly two themes: classic-light and midnight', () => {
-    expect(cardThemes).toHaveLength(2);
-    expect(cardThemes[0]!.id).toBe('classic-light');
-    expect(cardThemes[1]!.id).toBe('midnight');
+  it('contains exactly three themes in registry order', () => {
+    expect(cardThemes).toHaveLength(3);
+    expect(cardThemes[0]!.id).toBe('zellige');
+    expect(cardThemes[1]!.id).toBe('classic-light');
+    expect(cardThemes[2]!.id).toBe('midnight');
   });
 
   it('all theme ids are unique', () => {
@@ -44,12 +52,10 @@ describe('cardThemes registry', () => {
 });
 
 describe('nextTheme', () => {
-  it('cycles from classic-light to midnight', () => {
-    expect(nextTheme(defaultCardTheme).id).toBe('midnight');
-  });
-
-  it('cycles from midnight back to classic-light', () => {
-    expect(nextTheme(midnightCardTheme).id).toBe('classic-light');
+  it('cycles zellige → classic-light → midnight → zellige', () => {
+    expect(nextTheme(zelligeCardTheme).id).toBe('classic-light');
+    expect(nextTheme(classicLightCardTheme).id).toBe('midnight');
+    expect(nextTheme(midnightCardTheme).id).toBe('zellige');
   });
 
   it('is a full cycle: applying nextTheme N times returns to start', () => {
@@ -62,18 +68,33 @@ describe('nextTheme', () => {
 });
 
 describe('defaultCardTheme', () => {
-  it('has a light card face', () => {
-    expect(defaultCardTheme.face.palette.bg).toBe('#FFFFFF');
+  it('points at classic-light', () => {
+    expect(defaultCardTheme.id).toBe('classic-light');
+    expect(defaultCardTheme.back.pattern).toBe('plain');
+  });
+});
+
+describe('classicLightCardTheme', () => {
+  it('has a light card face and plain back', () => {
+    expect(classicLightCardTheme.face.palette.bg).toBe('#FFFFFF');
+    expect(classicLightCardTheme.back.pattern).toBe('plain');
   });
 });
 
 describe('midnightCardTheme', () => {
   it('has a dark card face', () => {
-    // Midnight bg is darker than default — crude but sufficient check.
     expect(midnightCardTheme.face.palette.bg).not.toBe('#FFFFFF');
   });
 
   it('has gold accent on the border', () => {
     expect(midnightCardTheme.border.color).toBe('#C9A84C');
+  });
+});
+
+describe('zelligeCardTheme', () => {
+  it('uses the zellige back pattern and warm face', () => {
+    expect(zelligeCardTheme.back.pattern).toBe('zellige');
+    expect(zelligeCardTheme.face.palette.bg).toBe('#FFFDF7');
+    expect(zelligeCardTheme.back.palette.accent).toBe('#C9A227');
   });
 });

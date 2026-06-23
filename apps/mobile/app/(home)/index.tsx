@@ -1,11 +1,56 @@
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import type { Card } from '@pablo/engine';
+
+import { PlayingCard } from '../../src/components/cards/PlayingCard';
+import { Button } from '../../src/components/ui/Button';
+import { defaultCardTheme } from '../../src/design/cardTheme';
 import { tokens } from '../../src/design/tokens';
+import { textStyle } from '../../src/design/typography';
 import { t } from '../../src/i18n';
 import { getRealClient } from '../../src/supabase/client';
+
+const FAN_CARD: Card = { suit: 'spades', rank: 1 };
+const FAN_SIZE = { width: 88, height: 128 };
+const FAN_LAYOUT = [
+  { rotate: '-16deg', translateX: 46, translateY: 14 },
+  { rotate: '0deg', translateX: 0, translateY: -6 },
+  { rotate: '16deg', translateX: -46, translateY: 14 },
+] as const;
+
+function CardFan() {
+  return (
+    <View style={styles.fan} pointerEvents="none">
+      {FAN_LAYOUT.map((pose, i) => (
+        <View
+          key={i}
+          style={[
+            styles.fanCard,
+            {
+              transform: [
+                { translateX: pose.translateX },
+                { translateY: pose.translateY },
+                { rotate: pose.rotate },
+              ],
+            },
+          ]}
+        >
+          <PlayingCard
+            card={FAN_CARD}
+            faceUp={false}
+            theme={defaultCardTheme}
+            size={FAN_SIZE}
+            draggable={false}
+            flippable={false}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
 
 export default function HomeScreen() {
   const [resolving, setResolving] = useState(true);
@@ -55,28 +100,27 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.content}>
-        <Text style={styles.title}>{t('home.title')}</Text>
-        <Text style={styles.subtitle}>{t('home.subtitle')}</Text>
+        <View style={styles.hero}>
+          <CardFan />
+          <Text style={styles.wordmark}>{t('home.title')}</Text>
+          <Text style={styles.subtitle}>{t('home.subtitle')}</Text>
+        </View>
 
-        <Link href="/(lobby)" asChild>
-          <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.8}>
-            <Text style={styles.primaryBtnText}>{t('home.playOnline')}</Text>
-          </TouchableOpacity>
-        </Link>
-
-        <Link href="/(home)/new-game" asChild>
-          <TouchableOpacity style={styles.secondaryBtn} activeOpacity={0.8}>
-            <Text style={styles.secondaryBtnText}>{t('home.playVsBots')}</Text>
-          </TouchableOpacity>
-        </Link>
-
-        {__DEV__ && (
-          <Link href="/dev/card-lab" asChild>
-            <TouchableOpacity style={styles.devBtn} activeOpacity={0.7}>
-              <Text style={styles.devBtnText}>{t('dev.cardLab.openButton')}</Text>
-            </TouchableOpacity>
-          </Link>
-        )}
+        <View style={styles.actions}>
+          <Button label={t('home.playOnline')} onPress={() => router.push('/(lobby)')} />
+          <Button
+            label={t('home.playVsBots')}
+            variant="secondary"
+            onPress={() => router.push('/(home)/new-game')}
+          />
+          {__DEV__ && (
+            <Button
+              label={t('dev.cardLab.openButton')}
+              variant="ghost"
+              onPress={() => router.push('/dev/card-lab')}
+            />
+          )}
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -86,62 +130,44 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: tokens.color.surface.app,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flex: 1,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: tokens.space.lg,
+    gap: tokens.space.xxl,
     paddingHorizontal: tokens.space.xl,
   },
-  title: {
-    fontSize: tokens.font.size.xl,
-    fontWeight: tokens.font.weight.semibold,
+  hero: {
+    alignItems: 'center',
+    gap: tokens.space.sm,
+  },
+  fan: {
+    height: 150,
+    width: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    marginBottom: tokens.space.lg,
+  },
+  fanCard: {
+    position: 'absolute',
+    ...tokens.shadow.card,
+  },
+  wordmark: {
+    ...textStyle('display', 'bold'),
     color: tokens.color.text.primary,
   },
   subtitle: {
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm'),
     color: tokens.color.text.secondary,
     textAlign: 'center',
   },
-  primaryBtn: {
+  actions: {
     width: '100%',
-    backgroundColor: tokens.color.accent.primary,
-    borderRadius: tokens.radius.md,
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.xxl,
-    marginTop: tokens.space.lg,
-    alignItems: 'center',
-  },
-  primaryBtnText: {
-    color: tokens.color.text.inverse,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
-  },
-  secondaryBtn: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: tokens.color.border.subtle,
-    borderRadius: tokens.radius.md,
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.xxl,
-    alignItems: 'center',
-  },
-  secondaryBtnText: {
-    color: tokens.color.text.primary,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
-  },
-  devBtn: {
-    marginTop: tokens.space.xl,
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.sm,
-    borderWidth: 1,
-    borderColor: tokens.color.border.subtle,
-    borderRadius: tokens.radius.md,
-  },
-  devBtnText: {
-    fontSize: tokens.font.size.sm,
-    color: tokens.color.text.secondary,
+    gap: tokens.space.md,
   },
 });

@@ -9,6 +9,8 @@
       "tapToFlip": "Tap to flip · Drag to move",
       "themeButton": "Theme: {{name}}",
       "variantsTitle": "Variants",
+      "gameSizes": "In-game sizes",
+      "rankStrip": "Rank strip",
       "openButton": "Open Card Lab"
     }
   },
@@ -89,6 +91,10 @@
     "discard": {
       "empty": "Discard"
     },
+    "seat": {
+      "cards": "{{count}}",
+      "pablo": "Pablo!"
+    },
     "drawn": {
       "yourCard": "Your drawn card",
       "label": "Drawn"
@@ -123,10 +129,13 @@
       "create": "Create room",
       "join": "Join by code"
     },
+    "name": {
+      "label": "Your name",
+      "placeholder": "Enter your name"
+    },
     "create": {
       "title": "Create a room",
       "subtitle": "Share the code with friends on the same network",
-      "maxPlayers": "{{count}} players",
       "confirm": "Create"
     },
     "join": {
@@ -142,7 +151,10 @@
       "capacity": "{{count}} / {{max}} players",
       "start": "Start game",
       "leave": "Leave room",
-      "gameStarting": "Game starting…"
+      "gameStarting": "Game starting…",
+      "editName": "Edit",
+      "saveName": "Save",
+      "cancelName": "Cancel"
     }
   },
   "result": {

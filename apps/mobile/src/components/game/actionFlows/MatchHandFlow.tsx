@@ -14,6 +14,7 @@ import React, { useState } from 'react';
 import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { tokens } from '../../../design/tokens';
+import { textStyle } from '../../../design/typography';
 import { t } from '../../../i18n';
 import { useGameStore, useGameStoreShallow } from '../../../store/provider';
 import { selectIsBusy, selectMatchHandPairs, selectMyHandSlots } from '../../../store/selectors';
@@ -98,10 +99,10 @@ const styles = StyleSheet.create({
     padding: tokens.space.xl,
     width: '100%',
     gap: tokens.space.lg,
+    ...tokens.shadow.floating,
   },
   title: {
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('md', 'semibold'),
     color: tokens.color.text.primary,
     textAlign: 'center',
   },
@@ -120,9 +121,8 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.color.border.subtle,
   },
   confirmText: {
+    ...textStyle('sm', 'semibold'),
     color: tokens.color.text.inverse,
-    fontWeight: tokens.font.weight.semibold,
-    fontSize: tokens.font.size.sm,
   },
   cancelBtn: {
     flex: 1,
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelText: {
+    ...textStyle('sm'),
     color: tokens.color.text.secondary,
-    fontSize: tokens.font.size.sm,
   },
 });

@@ -19,8 +19,11 @@ v1 keeps the visual identity minimal and themable. We evolve toward a zellige-in
 
 - Clean and uncluttered. Lots of breathing room.
 - Card backs: solid color with a subtle geometric motif placeholder (replace with zellige pattern in Phase 6).
-- Typography: a single sans-serif family with two weights (regular + semibold).
-- Color palette: neutral base + one accent. Avoid committing to a specific cultural palette until Phase 6.
+- Typography: Outfit via `textStyle()` in `apps/mobile/src/design/typography.ts` — one
+  `fontFamily` per weight (`regular`, `semibold`, `bold`); never pair custom
+  `fontFamily` with `fontWeight`.
+- Color palette: teal-zellige identity (warm sand chrome, terracotta actions,
+  gold felt-side cues). All values in `tokens.ts`.
 
 ## Example: tokens
 
@@ -35,6 +38,6 @@ export const tokens = {
   },
   space:  { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 },
   radius: { sm: 6, md: 10, lg: 16, pill: 999 },
-  font:   { size: { xs: 12, sm: 14, md: 16, lg: 20, xl: 28 }, weight: { regular: '400', semibold: '600' } },
+  font:   { size: { … }, family: { regular, semibold, bold }, letterSpacing: { … } },
 } as const;
 ```

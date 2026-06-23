@@ -22,6 +22,11 @@ function deckCenterX(layout: ReturnType<typeof seatLayout>): number {
   return layout.deck.left + layout.deck.width / 2;
 }
 
+function deckCardCenterY(layout: ReturnType<typeof seatLayout>): number {
+  const deckCardH = Math.floor(tokens.game.size.deckCard * 1.46);
+  return layout.deck.top + deckCardH / 2;
+}
+
 describe('seatLayout', () => {
   for (const profile of PROFILES) {
     for (const count of [1, 2, 3] as const satisfies ReadonlyArray<OpponentCount>) {
@@ -73,11 +78,10 @@ describe('seatLayout', () => {
     expect(layout.self.top).toBeGreaterThan(layout.deck.top + layout.deck.height);
   });
 
-  it('centers deck vertically on the table', () => {
+  it('centers deck cards vertically on the table', () => {
     const h = 844;
     const layout = seatLayout(2, 390, h, ZERO_INSETS);
-    const deckCenterY = layout.deck.top + layout.deck.height / 2;
-    expect(Math.abs(deckCenterY - h / 2)).toBeLessThanOrEqual(32);
+    expect(Math.abs(deckCardCenterY(layout) - h / 2)).toBeLessThanOrEqual(8);
   });
 
   it('places drawn zone adjacent to the centred deck without overlap', () => {
@@ -100,6 +104,14 @@ describe('seatLayout', () => {
       layout.opponents[1]!.left - (layout.opponents[0]!.left + layout.opponents[0]!.width);
     expect(gapBetweenSeats).toBeGreaterThan(tokens.game.table.handGap);
     expect(gapBetweenSeats).toBeGreaterThanOrEqual(tokens.game.table.handGap + 4);
+  });
+
+  it('uses seatHeaderHeight for opponent band math', () => {
+    expect(tokens.game.table.seatHeaderHeight).toBe(36);
+    const layout = seatLayout(2, 390, 844, ZERO_INSETS);
+    const gridH = 2 * Math.floor(layout.opponentCardWidth * 1.46) + tokens.game.table.handGap;
+    const expectedOppH = tokens.game.table.seatHeaderHeight + tokens.game.table.nameGap + gridH;
+    expect(layout.opponents[0]!.height).toBe(expectedOppH);
   });
 
   it('sizes each opponent seat to the grid width, not equal screen thirds', () => {

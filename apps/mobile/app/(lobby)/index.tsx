@@ -1,8 +1,10 @@
-import { Link } from 'expo-router';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { router } from 'expo-router';
+import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '../../src/components/ui/Button';
 import { tokens } from '../../src/design/tokens';
+import { textStyle } from '../../src/design/typography';
 import { t } from '../../src/i18n';
 
 export default function LobbyHomeScreen() {
@@ -12,17 +14,14 @@ export default function LobbyHomeScreen() {
         <Text style={styles.title}>{t('lobby.title')}</Text>
         <Text style={styles.subtitle}>{t('lobby.subtitle')}</Text>
 
-        <Link href="/(lobby)/create" asChild>
-          <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.8}>
-            <Text style={styles.primaryBtnText}>{t('lobby.hub.create')}</Text>
-          </TouchableOpacity>
-        </Link>
-
-        <Link href="/(lobby)/join" asChild>
-          <TouchableOpacity style={styles.secondaryBtn} activeOpacity={0.8}>
-            <Text style={styles.secondaryBtnText}>{t('lobby.hub.join')}</Text>
-          </TouchableOpacity>
-        </Link>
+        <View style={styles.actions}>
+          <Button label={t('lobby.hub.create')} onPress={() => router.push('/(lobby)/create')} />
+          <Button
+            label={t('lobby.hub.join')}
+            variant="secondary"
+            onPress={() => router.push('/(lobby)/join')}
+          />
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -41,39 +40,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.xl,
   },
   title: {
-    fontSize: tokens.font.size.xl,
-    fontWeight: tokens.font.weight.semibold,
+    ...textStyle('xl', 'semibold'),
     color: tokens.color.text.primary,
   },
   subtitle: {
-    fontSize: tokens.font.size.sm,
+    ...textStyle('sm'),
     color: tokens.color.text.secondary,
     textAlign: 'center',
     marginBottom: tokens.space.lg,
   },
-  primaryBtn: {
+  actions: {
     width: '100%',
-    backgroundColor: tokens.color.accent.primary,
-    borderRadius: tokens.radius.md,
-    paddingVertical: tokens.space.md,
-    alignItems: 'center',
-  },
-  primaryBtnText: {
-    color: tokens.color.text.inverse,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
-  },
-  secondaryBtn: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: tokens.color.border.subtle,
-    borderRadius: tokens.radius.md,
-    paddingVertical: tokens.space.md,
-    alignItems: 'center',
-  },
-  secondaryBtnText: {
-    color: tokens.color.text.primary,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
+    gap: tokens.space.md,
   },
 });
